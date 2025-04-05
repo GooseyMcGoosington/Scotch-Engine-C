@@ -1,0 +1,59 @@
+#ifndef classes
+#define classes
+#include <stdio.h>
+
+typedef struct {
+    int x0;
+    int x1;
+    int y0;
+    int y1;
+    int is_portal;
+    float portal_top;
+    float portal_bottom;
+    int portal_link;
+    float length;
+    int tIndex;
+} wall;
+
+typedef struct {
+    float elevation;
+    float height;
+    int cIndex;
+    int fIndex;
+    size_t count;
+    wall walls[];
+} sector;
+
+typedef struct {
+    size_t count;
+    sector *sectors[];
+} Level;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+    float h;
+    float yaw;
+    float focalLength;
+    float fov;
+    float fovWidth;
+} player;
+
+typedef struct {
+    float x0;
+    float x1;
+    float y0;
+    float y1;
+    float y2;
+    float y3;
+    float dxCull;
+} portalCull;
+
+typedef struct {
+    int sector_link;
+    portalCull portalBounds;
+    int clipped;
+} portalRender;
+
+#endif // MY_STRUCTS_H
