@@ -73,14 +73,6 @@ void draw_pixel(Uint16 * restrict pixels, int x, int y) {
     }
 }
 
-float roundToPowerOfTwo(float value) {
-    if (value <= 0.0f) return 0.0f;  // handle invalid value
-    
-    // Calculate the power of two
-    int exponent = (int)(log2f(value) + 0.5f);  // round the logarithm to the nearest integer
-    return powf(2.0f, exponent);
-}
-
 void draw_wall(Uint16 * restrict pixels, float sx0, float sx1, 
     float sy0, float sy1, float sy2, float sy3, 
     portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height) {
