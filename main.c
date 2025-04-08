@@ -15,7 +15,7 @@
 #define ALIGNMENT 64
 #define PREFETCH_PIXELS(addr) _mm_prefetch((const char*)addr, _MM_HINT_T0)
 
-player character = {20.0, 10.0, 0.0, 5.0, 0.0, 70.0, 90.0, 0.0};
+player character = {20.0, 10.0, 0.0, 5.0, 180.0, 70.0, 90.0, 0.0};
 
 Level *level = NULL;
 
@@ -28,8 +28,8 @@ int fI = 0;
 double fAvg = 0;
 
 static void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *surface, SDL_Window *window) {
-    int width = rgb565_surface->w;
-    int height = rgb565_surface->h;
+    int width = rgb565_surface->w-1;
+    int height = rgb565_surface->h-1;
 
     Uint16 *src_pixels = (Uint16*)rgb565_surface->pixels;
     Uint32 *dst_pixels = (Uint32*)surface->pixels;
@@ -37,23 +37,21 @@ static void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *s
     Uint16 *src = src_pixels;
     Uint32 *dst = dst_pixels;
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) { // Process two pixels per iteration
-            // Extract RGB565 values
-            Uint16 src_pixel = *src++;
+    for (int i = 1; i < (width*height); i++) { // Process two pixels per iteration
+        // Extract RGB565 values
+        Uint16 src_pixel = *src++;
 
-            // Convert first pixel
-            int r1 = (src_pixel >> 11) & 0x1F; 
-            int g1 = (src_pixel >> 5) & 0x3F;
-            int b1 = src_pixel & 0x1F;
+        // Convert first pixel
+        int r1 = (src_pixel >> 11) & 0x1F; 
+        int g1 = (src_pixel >> 5) & 0x3F;
+        int b1 = src_pixel & 0x1F;
 
-            Uint32 pixel = 0xFF000000 |
-                (r1*524288) |
-                (g1*1024)  |
-                (b1*8);
+        Uint32 pixel = 0xFF000000 |
+            (r1<<19) |
+            (g1<<10)  |
+            (b1<<3);
 
-            *dst++ = pixel;
-        }
+        *dst++ = pixel;
     }
 
     // Update the window surface with the new pixel data
@@ -61,7 +59,7 @@ static void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *s
 }
 
 int main(int argc, char* argv[]) {
-    float f = character.fov*PI/180;
+    float f = DEG2RAD(character.fov);
     float tanFOV = tan(f/2);
     float focalLength = SW2/tanFOV;
     character.focalLength = focalLength;
@@ -109,7 +107,7 @@ int main(int argc, char* argv[]) {
     level->sectors[2] = malloc(sizeof(sector) + 4 * sizeof(wall));
     sector *sect2 = level->sectors[2];
     sect2->count = 4;
-    sect2->height = 6.0;
+    sect2->height = 24.0;
     sect2->elevation = 2.0;
     sect2->cIndex = 1;
     sect2->fIndex = 1;
@@ -159,22 +157,40 @@ int main(int argc, char* argv[]) {
             if (event.type == SDL_QUIT) {
                 quit = 1;
             }
+            if (event.type == SDL_KEYDOWN) {
+               if (event.key.keysym.sym == SDLK_UP) {
+                    float a = DEG2RAD(character.yaw);
+                    character.x += 1*sin(a);
+                    character.y += 1*cos(a);
+               }
+               if (event.key.keysym.sym == SDLK_DOWN) {
+                    float a = DEG2RAD(character.yaw);
+                    character.x -= 1*sin(a);
+                    character.y -= 1*cos(a);
+               }
+               if (event.key.keysym.sym == SDLK_LEFT) {
+                    character.yaw -= 3;
+               }
+               if (event.key.keysym.sym == SDLK_RIGHT) {
+                    character.yaw += 3;
+               }
+               if (character.yaw < 0) character.yaw = 360;
+               if (character.yaw > 360) character.yaw = 0;
+            }   
         }
 
         int yaw = character.yaw;
         float pSn = sn[yaw];
         float pCs = cs[yaw];
-        character.yaw = 180;//+= 0.1;
-        if (character.yaw < 0) character.yaw = 360;
-        if (character.yaw > 360) character.yaw = 0;
         startDrawSector((Uint16 *)rgb565_surface->pixels, level, level->sectors[0], character, pSn, pCs, portalBounds);
         optimized_blt_and_update(rgb565_surface, surface, window);
+        memset(rgb565_surface->pixels, 0, SW*SH*sizeof(uint16_t));
         gettimeofday(&end, NULL);
         double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
 
         fI++;
         fAvg += time_spent;
-        if (fI == 240) {
+        if (fI == 120) {
             char str[10];
             fAvg /= fI;
             sprintf(str, "%.4f", (float)(1/fAvg));

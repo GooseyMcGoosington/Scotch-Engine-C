@@ -66,19 +66,30 @@ int pointWallCollision(float px, float py, float ax, float ay, float bx, float b
             stepU = (iU-U) / 16;
         }
         U += stepU;*/
-        
+
+void draw_pixel(Uint16 * restrict pixels, int x, int y) {
+    if (x > 1 & x < SW1) {
+        pixels[y*SW+x] = RED;
+    }
+}
+
+float roundToPowerOfTwo(float value) {
+    if (value <= 0.0f) return 0.0f;  // handle invalid value
+    
+    // Calculate the power of two
+    int exponent = (int)(log2f(value) + 0.5f);  // round the logarithm to the nearest integer
+    return powf(2.0f, exponent);
+}
+
 void draw_wall(Uint16 * restrict pixels, float sx0, float sx1, 
     float sy0, float sy1, float sy2, float sy3, 
     portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height) {
 
-    float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f; 
+    float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
     int endX   = clamp((int)sx1, portalBounds.x0, portalBounds.x1);
-    startX = clamp(startX, 1, SW1);
-    endX = clamp(endX, 1, SW1);
-
-    int numX = endX - startX;
-    if (numX <= 0) return;
+    //startX = clamp(startX, 1, SW1);
+    //endX = clamp(endX, 1, SW1);
 
     float invDx = 1.0f / dx;
     float invCullDx = 1.0f / portalBounds.dxCull;
@@ -96,11 +107,8 @@ void draw_wall(Uint16 * restrict pixels, float sx0, float sx1,
     float wz1 = wy1/z1;
 
     float wh = height/4;
-    
-    //uint16_t tempCache[4096];
-    //for (int i=0; i<4096; i++) {
-    //    tempCache[i] = 0; // This means there is no stored pixel, I guess :)
-    //}
+
+    float TEXTURE_DETAIL = ((1 << 6)*wh*TEXTURE_DETAIL_MODE);
     for (int x = startX; x < endX; x++) {
         //int idx = x - startX;
         float t = (x - sx0) * invDx;
@@ -111,19 +119,19 @@ void draw_wall(Uint16 * restrict pixels, float sx0, float sx1,
         float wS = (1-v) * wy0 + v*wy1;
         float dS = ((1-v) * wz1 + v*wz0);// / ((1-v) * wy0 + v*wy1);
 
-        int yTop    = (int)((1.0f - t) * sy0 + t * sy1);
-        int yBottom = (int)((1.0f - t) * sy2 + t * sy3);
+        int_fast16_t yTop    = (int)((1.0f - t) * sy0 + t * sy1);
+        int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
 
-        int tTop = yTop;
-        int tBottom = yBottom;
+        int_fast16_t tTop = yTop;
+        int_fast16_t tBottom = yBottom;
 
-        int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-        int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+        int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
 
-        register int U = (int)(((1-v) * tLZ0 + v*tRZ1) / wS * (1<<6)) % 64;
+        register int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * (1<<6)) & 0x3F;
 
-        yTop    = fmaxf(fminf(yTop, clampY1), clampY0);
-        yBottom = fmaxf(fminf((float)(int)(yBottom+0.5), clampY1), clampY0);
+        yTop    = clamp(yTop, clampY0, clampY1);
+        yBottom = clamp(yBottom, clampY0, clampY1);
 
         if (flat == 0) {
             ceilingLut[x] = yTop;
@@ -133,25 +141,18 @@ void draw_wall(Uint16 * restrict pixels, float sx0, float sx1,
         } else if (flat == 2) {
             floorLut[x] = yBottom;
         }
-        // Calculate dxY once before the loop
         float dxY = (tBottom - tTop);
-        //int texYOffset = 0;
+        float idxY = (1/dxY) * TEXTURE_DETAIL;
         int row = yTop * SW + x;  // Start row at the correct position
-
-        float idxY = (1/dxY) * ((1 << 6)*wh*TEXTURE_DETAIL_MODE);
         uint16_t lastColour;
 
-        int tXI = 0;
-        //int tX = 0;
-
-        // Texture Files should be a multiple of 2; 16, 32, 64, 128, 256, 512.
-
-        float shade = 1.0f / (1.0f + dS * 0.0025f);
+        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);
         for (int y = yTop; y <= yBottom; y++) {
-            if ((tXI % TEXTURE_DETAIL_MODE) == 0) {
+
+            if ((y & (TEXTURE_DETAIL_MODE - 1)) == 0) {
                 // Calculate wrapped texY directly using merged constants
-                int texY = ((int)((y - tTop) * idxY) & 0x3F);
-                register int V = (texY << 6);
+                int_fast16_t texY = ((int_fast16_t)((y - tTop) * idxY) & 0x3F);
+                register int_fast16_t V = (texY << 6);
                 switch (DEPTH_SHADING) {
                     case 0:
                         lastColour = w_pixels[U + V];
@@ -159,16 +160,15 @@ void draw_wall(Uint16 * restrict pixels, float sx0, float sx1,
                     case 1:
                         {
                             register uint16_t baseColour = w_pixels[U + V];
-                            register uint16_t r = (((baseColour >> 11) & 0x1F) * shade);
-                            register uint16_t g = (((baseColour >> 5)  & 0x3F) * shade);
-                            register uint16_t b = ((baseColour & 0x1F) * shade);
+                            register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                            register uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
+                            register uint8_t b = ((baseColour & 0x1F) >> shade);
                             
                             lastColour = (r << 11) | (g << 5) | b;
                         }
                         break;
                 }
             }
-            tXI ++;
             pixels[row] = lastColour;
 
             // Move to the next row
@@ -177,7 +177,7 @@ void draw_wall(Uint16 * restrict pixels, float sx0, float sx1,
     }
 }
 
-void draw_flat(Uint16 *pixels, int *lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *t_pixels) {
+void draw_flat(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
     int X0 = clamp(clamp((int)0, portalBounds.x0, portalBounds.x1), 1, SW1);
     int X1 = clamp(clamp((int)SW1, portalBounds.x0, portalBounds.x1), 1, SW1);
 
@@ -200,26 +200,25 @@ void draw_flat(Uint16 *pixels, int *lut, int flat, portalCull portalBounds, floa
                 int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
 
                 // Clamp the Y values once for the whole x-range
-                int Y0 = clamp(clamp(1, clampY0, clampY1), 1, SH1);
-                int Y1 = clamp(clamp(lut[x], clampY0, clampY1), 1, SH1);
+                int Y0 = clamp(1, clampY0, clampY1);
+                int Y1 = clamp(lut[x], clampY0, clampY1);
 
                 int row = Y0 * SW + x;  // Start row at the correct position
 
                 // Precompute values that don't change in the loop
                 register uint16_t lastColour;
-                int tXI = 0;
                 for (int y = Y0; y < Y1; y++) {
                     // Perform the color lookup and set the pixel
-                    if ((tXI % TEXTURE_DETAIL_MODE) == 0) {
+                    if ((y % TEXTURE_DETAIL_MODE) == 0) {
                         float R = (y - SH2);
                         float straightDist = elevationFactor / R;
                         float d = (straightDist / sin_beta);
-                        float wx = cx + (sin_alpha * d);
-                        float wy = cy + (cos_alpha * d);
+                        float wx = cy - (sin_alpha * d);
+                        float wy = cx + (cos_alpha * d);
 
                         // Calculate texture coordinates
-                        register int tx = ((int)(wx * (1<<3))) % 64;
-                        register int ty = ((int)(wy * (1<<3))) % 64;
+                        register int tx = ((int)(wx * (1<<3))) & 0x3F;
+                        register int ty = ((int)(wy * (1<<3))) & 0x3F;
 
                         // Ensure positive indices after modulo
                         if (tx < 0) tx += 64;
@@ -234,18 +233,17 @@ void draw_flat(Uint16 *pixels, int *lut, int flat, portalCull portalBounds, floa
                             case 1:
                                 {
                                     float dS = d/f;
-                                    float shade = 1.0f / (1.0f + dS * 40);
+                                    int shade = (int)(1.0f + dS * 40.0f);
                                     register uint16_t baseColour = t_pixels[index];
-                                    register uint16_t r = (((baseColour >> 11) & 0x1F) * shade);
-                                    register uint16_t g = (((baseColour >> 5)  & 0x3F) * shade);
-                                    register uint16_t b = ((baseColour & 0x1F) * shade);
+                                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                                    register uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
+                                    register uint8_t b = ((baseColour & 0x1F) >> shade);
                                     
                                     lastColour = (r << 11) | (g << 5) | b;
                                 }
                                 break;
                         }
                     }
-                    tXI ++;
                     pixels[row] = lastColour;
 
                     // Move to the next row
@@ -265,22 +263,22 @@ void draw_flat(Uint16 *pixels, int *lut, int flat, portalCull portalBounds, floa
                 int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
                 int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
 
-                int Y1 = clamp(clamp(SH1, clampY0, clampY1), 1, SH1);
-                int Y0 = clamp(clamp(lut[x], clampY0, clampY1), 1, SH1);
+                int Y1 = clamp(SH1, clampY0, clampY1);
+                int Y0 = clamp(lut[x], clampY0, clampY1);
+
                 int row = Y0*SW+x;
                 register uint16_t lastColour;
-                int tXI = 0;
                 for (int y=Y0; y<Y1; y++) {
-                    if ((tXI % TEXTURE_DETAIL_MODE) == 0) {
+                    if ((y & (TEXTURE_DETAIL_MODE - 1)) == 0) {
                         float R = (y - SH2);
                         float straightDist = elevationFactor / R;
                         float d = (straightDist / sin_beta);
-                        float wx = cx + (sin_alpha * d);
-                        float wy = cy + (cos_alpha * d);
+                        float wx = cy - (sin_alpha * d);
+                        float wy = cx + (cos_alpha * d);
 
                         // Calculate texture coordinates
-                        register int tx = ((int)(wx * (1<<3))) % 64;
-                        register int ty = ((int)(wy * (1<<3))) % 64;
+                        register int tx = ((int)(wx * (1<<3))) & 0x3F;
+                        register int ty = ((int)(wy * (1<<3))) & 0x3F;
 
                         // Ensure positive indices after modulo
                         if (tx < 0) tx += 64;
@@ -296,18 +294,17 @@ void draw_flat(Uint16 *pixels, int *lut, int flat, portalCull portalBounds, floa
                             case 1:
                                 {
                                     float dS = d/f;
-                                    float shade = 1.0f / (1.0f + dS * 40);
+                                    int shade = (int)(1.0f + dS * 40.0f);
                                     register uint16_t baseColour = t_pixels[index];
-                                    register uint16_t r = (((baseColour >> 11) & 0x1F) * shade);
-                                    register uint16_t g = (((baseColour >> 5)  & 0x3F) * shade);
-                                    register uint16_t b = ((baseColour & 0x1F) * shade);
+                                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                                    register uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
+                                    register uint8_t b = ((baseColour & 0x1F) >> shade);
                                     
                                     lastColour = (r << 11) | (g << 5) | b;
                                 }
                                 break;
                         }
                     }
-                    tXI ++;
                     pixels[row] = lastColour;
                     row += SW;
                 }
@@ -315,6 +312,7 @@ void draw_flat(Uint16 *pixels, int *lut, int flat, portalCull portalBounds, floa
             break;
     }
 }
+
 void drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds) {
     wall *walls = Sector->walls;
     size_t wallCount = Sector->count;
@@ -446,7 +444,34 @@ void drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, 
                     }
                 }
             }
-            portalCull newPortalBounds = {sx0, sx1, sy6, sy7, sy0, sy1, sx1-sx0};
+
+            float dxCull = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
+
+            // Construct the new portal bounds with the clipped values
+
+            //if (sx1 > portalBounds.x1) {
+            //    sx1 = portalBounds.x1;
+            //}
+            if (sx0 < portalBounds.x0) {
+                
+                float t = (portalBounds.x0-sx0)/dxCull;
+                sx0 = portalBounds.x0;
+
+                sy6 = (1-t)*sy6 + t*sy7;
+                sy0 = (1-t)*sy0 + t*sy1;
+                dxCull = sx1-sx0;
+            } 
+            if (sx1 > portalBounds.x1) {
+                
+                float t = (portalBounds.x1-sx0)/dxCull;
+                sx1 = portalBounds.x1;
+
+                sy7 = (1-t)*sy6 + t*sy7;
+                sy1 = (1-t)*sy0 + t*sy1;
+                dxCull = sx1-sx0;
+            }
+            
+            portalCull newPortalBounds = {sx0, sx1, sy6, sy7, sy0, sy1, dxCull};
             newPortal.portalBounds = newPortalBounds;
             portalQueue[portalCount++] = newPortal;
         }

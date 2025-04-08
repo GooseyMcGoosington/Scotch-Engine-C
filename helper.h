@@ -17,7 +17,7 @@
 #define SH2 SH/2
 #define SW1 SW-1
 #define SH1 SH-1
-#define TEXTURE_DETAIL_MODE 2 // This controls how detailed textures are.
+#define TEXTURE_DETAIL_MODE 1 // This controls how detailed textures are.
 #define DEPTH_SHADING 1 // This controls whether depth shading is enabled.
 
 inline double to_degrees(double radians) {

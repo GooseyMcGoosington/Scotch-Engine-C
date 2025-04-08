@@ -9,7 +9,7 @@
       "stopAtEntry": false,
       "externalConsole": true,
       "cwd": "c:/Users/frase/OneDrive/Desktop/CProjects/C",
-      "program": "c:/Users/frase/OneDrive/Desktop/CProjects/C/build/Debug/outDebug",
+      "program": "c:/Users/frase/OneDrive/Desktop/CProjects/C/main.exe",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
