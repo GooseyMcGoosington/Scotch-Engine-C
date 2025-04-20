@@ -4,22 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include "helper.h"
+#include "classes.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb/stb_image.h"
-
-#define MAX_TEXTURES 512
-#define MAX_TEXTURESIZE (128 * 128)
-
-typedef struct {
-    uint16_t *pixels;
-    int width;
-    int height;
-} tfile;
-
-typedef struct {
-    tfile *files;
-} tlut;
 
 tlut *texture_list = NULL;
 
@@ -56,8 +45,8 @@ tfile load_texture(char *filename) {
 void init_textures() {
     texture_list = malloc(sizeof(tlut));
     texture_list->files = malloc(MAX_TEXTURES * sizeof(tfile));
-    texture_list->files[0] = load_texture("textures/tile021.png");
-    texture_list->files[1] = load_texture("textures/tile099.png");
+    texture_list->files[0] = load_texture("textures/tile110.png");
+    texture_list->files[1] = load_texture("textures/tile115.png");
 
     //if (texture_list->files[0].pixels != NULL) {
     //    printf("Loaded texture, first pixel value: %x\n", texture_list->files[0].pixels[0]);

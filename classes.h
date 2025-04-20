@@ -1,6 +1,8 @@
 #ifndef classes
 #define classes
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 typedef struct {
     int x0;
@@ -13,6 +15,7 @@ typedef struct {
     int portal_link;
     float length;
     int tIndex;
+    int uid;
 } wall;
 
 typedef struct {
@@ -54,6 +57,17 @@ typedef struct {
     int sector_link;
     portalCull portalBounds;
     int clipped;
+    int uid;
 } portalRender;
+
+typedef struct {
+    uint16_t *pixels;
+    int width;
+    int height;
+} tfile;
+
+typedef struct {
+    tfile *files;
+} tlut;
 
 #endif // MY_STRUCTS_H
