@@ -1,6 +1,5 @@
 #include "config.h"
 #include "ini_parser.c"
-#include <stdalign.h>
 
 static int SW = 1920;
 static int SH = 1080;
