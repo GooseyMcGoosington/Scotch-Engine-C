@@ -2,9 +2,9 @@
 #include "helper.h"
 #include "SDL2/SDL.h"
 #include "raster.h"
-#include "gui.c"
-//#include "ini_parser.c"
-#include "config.c"
+//#include "gui.c"
+#include "ini_parser.c"
+//#include "config.c"
 
 //#include "config.h"
 
@@ -25,9 +25,9 @@ int inputs[256];
 
 double fAvg = 0;
 
-static void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *surface, SDL_Window *window) {
-    int width = rgb565_surface->w-1;
-    int height = rgb565_surface->h-1;
+static inline void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *surface, SDL_Window *window) {
+    int width = rgb565_surface->w;
+    int height = rgb565_surface->h;
 
     Uint16 *src_pixels = (Uint16*)rgb565_surface->pixels;
     Uint32 *dst_pixels = (Uint32*)surface->pixels;
@@ -52,7 +52,7 @@ static void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *s
     //G_HANDLE(surface, window, inputs);
     // Update the window surface with the new pixel data
     SDL_UpdateWindowSurface(window);
-}
+};
 
 int isChrWithinConvexSector() {
     int i = 0;
@@ -76,14 +76,11 @@ int isChrWithinConvexSector() {
     return -1;
 }
 
-int vx = 0;
-
 int main(int argc, char* argv[]) {
-    //INI_PARSE("settings.ini");
     // Initialize Code
-    CFG_INIT();
+    INI_PARSE("settings.ini");
+    CFG_Init(INI_FIND_VALUE("width"), INI_FIND_VALUE("height"));
     R_INIT();
-
     portalCull portalBounds = {1.0f, (float)SW1, 1.0f, 1.0f, SH1, SH1, SW1-1.0f};
     //
     float f = DEG2RAD(character.fov);
@@ -176,7 +173,7 @@ int main(int argc, char* argv[]) {
     SDL_Event event;
     
     //SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
-    G_INIT();
+    //G_INIT();
     init_textures();
 
     while (!quit) {
@@ -222,32 +219,28 @@ int main(int argc, char* argv[]) {
         if ((characterSector > -1) & (characterSector <= level->count)) {
             sector *playerSector = level->sectors[characterSector];
             character.z = playerSector->elevation;
+            
+            //console.profile();
             startDrawSector((Uint16 *)rgb565_surface->pixels, level, playerSector, character, pSn, pCs, portalBounds, characterSector);
+            gettimeofday(&end, NULL);
         }
         optimized_blt_and_update(rgb565_surface, surface, window);
-        gettimeofday(&end, NULL);
+        
         double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
-
-        /*const double frame_delay = 1.0 / 300.0;
-        if (time_spent < frame_delay) {
-            double sleep_time = frame_delay - time_spent;
-            usleep((useconds_t)(sleep_time * 1e6));  // Convert to microseconds
-        }*/
-        gettimeofday(&end, NULL);
         time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
 
         fI++;
         fAvg += time_spent;
         if (fI == 240) {
-            char str[8];
+            char str[10];
             fAvg /= fI;
-            sprintf(str, "%.4lf", (double)fAvg);
+            sprintf(str, "%.4lf", (double)(1/fAvg));
             SDL_SetWindowTitle(window, str);
             fI = 0;
             fAvg = 0;
         }
     }
-    G_QUIT();
+    //G_QUIT();
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;

@@ -19,14 +19,13 @@
 //#define SW1 SW-1
 //#define SH1 SH-1
 
-/*
 static int SW  = 1920;
 static int SH  = 1080;
 static int SW1 = 1919;
 static int SH1 = 1079;
 static int SW2 = 960;
 static int SH2 = 540;
-*/
+
 
 #define TEXTURE_DETAIL_MODE 1 // This controls how detailed textures are.
 #define DEPTH_SHADING 1 // This controls whether depth shading is enabled.
@@ -41,5 +40,14 @@ inline int clamp(int val, int minVal, int maxVal) {
 inline double to_degrees(double radians) {
     return radians * (180.0 / PI);
 }
+
+static inline void CFG_Init(int _SW, int _SH) {
+    SW = _SW;
+    SH = _SH;
+    SW1 = _SW-1;
+    SH1 = _SH-1;
+    SW2 = _SW/2;
+    SH2 = _SH/2;
+};
 
 #endif
