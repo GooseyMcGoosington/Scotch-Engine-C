@@ -166,7 +166,7 @@ int main(int argc, char* argv[]) {
     SDL_Window *window = SDL_CreateWindow("SDL2 Software Renderer Example",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        SW, SH, SDL_WINDOW_SHOWN);
+        SW, SH, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 
     SDL_Surface *surface = SDL_GetWindowSurface(window);
     SDL_Surface *rgb565_surface = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGB565, 0);
@@ -228,7 +228,7 @@ int main(int argc, char* argv[]) {
         
         double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
         time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
-
+        memset(rgb565_surface->pixels, 0, rgb565_surface->h*rgb565_surface->pitch);
         fI++;
         fAvg += time_spent;
         if (fI == 240) {

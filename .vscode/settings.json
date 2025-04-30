@@ -88,6 +88,7 @@
     "cstdint": "c",
     "typeinfo": "c",
     "config.h": "c",
-    "tloader.h": "c"
+    "tloader.h": "c",
+    "cstddef": "c"
   }
 }

@@ -1,3 +1,6 @@
+#ifndef INI_PARSER
+#define INI_PARSER
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -67,3 +70,5 @@ void INI_PARSE(const char* filename) { // File must be within the main folder an
     }
     fclose(f);
 }
+
+#endif

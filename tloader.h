@@ -33,7 +33,7 @@ tfile load_texture(char *filename) {
         uint8_t b = image[idx + 2];
 
         // Convert to RGB565 format
-        rgb565_pixels[i] = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+        rgb565_pixels[i]  = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
     }
 
     stbi_image_free(image);

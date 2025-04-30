@@ -26,7 +26,6 @@ static int SH1 = 1079;
 static int SW2 = 960;
 static int SH2 = 540;
 
-
 #define TEXTURE_DETAIL_MODE 1 // This controls how detailed textures are.
 #define DEPTH_SHADING 1 // This controls whether depth shading is enabled.
 #define MAX_WALLS 512
@@ -42,12 +41,12 @@ inline double to_degrees(double radians) {
 }
 
 static inline void CFG_Init(int _SW, int _SH) {
-    SW = _SW;
+    /*SW = _SW;
     SH = _SH;
     SW1 = _SW-1;
     SH1 = _SH-1;
     SW2 = _SW/2;
-    SH2 = _SH/2;
+    SH2 = _SH/2;*/
 };
 
 #endif
