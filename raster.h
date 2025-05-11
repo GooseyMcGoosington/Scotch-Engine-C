@@ -114,7 +114,7 @@ static inline void draw_wall(float sx0, float sx1,
         float st = (x - portalBounds.x0) * invCullDx;
 
         float wS = (1-v) * wy0 + v*wy1;
-        float dS = ((1-v) * wz1 + v*wz0);// / ((1-v) * wy0 + v*wy1);
+        float dS = ((1-v) * wz1 + v*wz0);
 
         int_fast16_t yTop    = (int)((1.0f - t) * sy0 + t * sy1);
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
@@ -132,7 +132,7 @@ static inline void draw_wall(float sx0, float sx1,
 
         int_fast16_t clampSY0 = clamp(yTop, 1, SH1);
         int_fast16_t clampSY1 = clamp(yBottom, 1, SH1);
-        int row = clampSY0 * SW + x;  // Start row at the correct position
+        int row = clampSY0 * SW + x;
 
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
@@ -150,7 +150,6 @@ static inline void draw_wall(float sx0, float sx1,
         uint16_t *base = &w_pixels[U];
 
         for (int y = clampSY0; y < clampSY1; y++) {
-            // Calculate wrapped texY directly using merged constants
             int_fast16_t V = (((int)((y - tTop) * idxY) & 0x3F) << 6);
             uint16_t baseColour = base[V];
             uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
@@ -158,7 +157,7 @@ static inline void draw_wall(float sx0, float sx1,
             uint8_t b = ((baseColour & 0x1F) >> shade);
             
             pixels[row] = (r << 11) | (g << 5) | b;
-            row += SW; // check if ASM output on C loads in SW from memory instead of registers
+            row += SW;
         }
     }
 };
@@ -186,25 +185,20 @@ static inline void draw_flat(Uint16 *restrict pixels, int *restrict lut, int fla
                 int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
                 int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
 
-                // Clamp the Y values once for the whole x-range
                 int Y0 = clamp(1, clampY0, clampY1);
                 int Y1 = clamp(lut[x], clampY0, clampY1);
 
-                int row = Y0 * SW + x;  // Start row at the correct position
+                int row = Y0 * SW + x;
 
-                // Precompute values that don't change in the loop
                 for (int y = Y0; y < Y1; y++) {
-                    // Perform the color lookup and set the pixel
                     float R = abs(y - SH2);
                     float straightDist = elevationFactor / R;
                     float d = (straightDist * inv_sin_beta);
                     float wx = cy + (sin_alpha * d);
                     float wy = cx - (cos_alpha * d);
-                    // Calculate texture coordinates
                     register int tx = ((int)(wx * (1<<3))) & 0x3F;
                     register int ty = ((int)(wy * (1<<3))) & 0x3F;
 
-                    // YX indexing
                     register int index = ty * (1 << 6) + tx;
                     int dS = ((int)straightDist<<6)/f;
                     int shade = (int)(1+dS);
@@ -236,17 +230,14 @@ static inline void draw_flat(Uint16 *restrict pixels, int *restrict lut, int fla
 
             int row = Y0*SW+x;
             for (int y = Y0; y < Y1; y++) {
-                // Perform the color lookup and set the pixel
                 float R = (y-SH2);
                 float straightDist = elevationFactor / R;
                 float d = (straightDist / sin_beta);
                 float wx = cy - (sin_alpha * d);
                 float wy = cx + (cos_alpha * d);
-                // Calculate texture coordinates
                 register int tx = ((int)(wx * (1<<3))) & 0x3F;
                 register int ty = ((int)(wy * (1<<3))) & 0x3F;
 
-                // YX indexing
                 register int index = ty * (1 << 6) + tx;
                 int dS = abs((int)straightDist<<6)/f;
                 int shade = (int)(1+dS);
@@ -256,7 +247,6 @@ static inline void draw_flat(Uint16 *restrict pixels, int *restrict lut, int fla
                 register uint8_t b = ((baseColour & 0x1F) >> shade);
                 
                 pixels[row] = (r << 11) | (g << 5) | b;
-                // Move to the next row
                 row += SW;
             }
         }

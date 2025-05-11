@@ -41,12 +41,12 @@ inline double to_degrees(double radians) {
 }
 
 static inline void CFG_Init(int _SW, int _SH) {
-    /*SW = _SW;
+    SW = _SW;
     SH = _SH;
     SW1 = _SW-1;
     SH1 = _SH-1;
     SW2 = _SW/2;
-    SH2 = _SH/2;*/
+    SH2 = _SH/2;
 };
 
 #endif
