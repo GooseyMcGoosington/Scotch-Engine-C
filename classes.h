@@ -64,6 +64,7 @@ typedef struct {
     uint16_t *pixels;
     int width;
     int height;
+    int scale;
 } tfile;
 
 typedef struct {

@@ -4,21 +4,20 @@
 #include "raster.h"
 //#include "gui.c"
 #include "ini_parser.c"
-//#include "config.c"
-
-//#include "config.h"
 
 #include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <math.h>
+#include <stdalign.h>
 
 player character = {20.0, -10.0, 0.0, 5.0, 90.0, 70.0, 90.0, 0.0};
 Level *level = NULL;
 
-float sn[360];
-float cs[360];
+alignas(32) float sn[360];
+alignas(32) float cs[360];
+
 int control_locked = 0;
 int fI = 0;
 int inputs[256];
@@ -50,7 +49,6 @@ static inline void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Sur
     }
     //G_HANDLE_IMAGE(rgb565_surface, window, &texture_list);
     //G_HANDLE(surface, window, inputs);
-    // Update the window surface with the new pixel data
     SDL_UpdateWindowSurface(window);
 };
 
@@ -75,11 +73,36 @@ int isChrWithinConvexSector() {
     }
     return -1;
 }
+// clang -std=c17 main.c -O3 -ffast-math -flto -march=native -funroll-loops -IC:\Users\frase\OneDrive\Desktop\CProjects\C\SDL2 -LC:\Users\frase\OneDrive\Desktop\CProjects\C\SDL2\lib -Wall -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf render.obj -o main
+
+SDL_Rect destRect = {0, 0, 1920, 1080};
+
+void RecalcDestRect(SDL_Window *win) {
+    int winW, winH;
+    SDL_GetWindowSize(win, &winW, &winH);
+
+    float windowAspect = (float)winW / (float)winH;
+    float targetAspect = (float)SW / (float)SH;
+
+    if (windowAspect > targetAspect) {
+        // window is too wide → pillarbox
+        destRect.h = winH;
+        destRect.w = (int)(winH * targetAspect);
+        destRect.x = (winW - destRect.w) / 2;
+        destRect.y = 0;
+    } else {
+        // window is too tall → letterbox
+        destRect.w = winW;
+        destRect.h = (int)(winW / targetAspect);
+        destRect.x = 0;
+        destRect.y = (winH - destRect.h) / 2;
+    }
+}
 
 int main(int argc, char* argv[]) {
     // Initialize Code
     INI_PARSE("settings.ini");
-    CFG_Init(INI_FIND_VALUE("width"), INI_FIND_VALUE("height"));
+    CFG_Init(INI_FIND_VALUE("res"));
     R_INIT();
     portalCull portalBounds = {1.0f, (float)SW1, 1.0f, 1.0f, SH1, SH1, SW1-1.0f};
     //
@@ -157,8 +180,6 @@ int main(int argc, char* argv[]) {
             float dx = x1-x0;
             float dy = y1-y0;
             float dst = sqrtf(dx*dx + dy*dy);
-
-            //printf("%.4f %s", dst, " ");
             Sector->walls[y].length = dst;
         }
     }
@@ -166,22 +187,29 @@ int main(int argc, char* argv[]) {
     SDL_Window *window = SDL_CreateWindow("SDL2 Software Renderer Example",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        SW, SH, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-
+        1920, 1080, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN);
+    RecalcDestRect(window);
     SDL_Surface *surface = SDL_GetWindowSurface(window);
-    SDL_Surface *rgb565_surface = SDL_ConvertSurfaceFormat(surface, SDL_PIXELFORMAT_RGB565, 0);
+    SDL_Surface *rgb565_surface = SDL_CreateRGBSurfaceWithFormat(0, SW, SH, 16, SDL_PIXELFORMAT_RGB565);
     SDL_Event event;
     
-    //SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
     //G_INIT();
     init_textures();
-
     while (!quit) {
         struct timeval begin, end;
         gettimeofday(&begin, NULL);
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
                 quit = 1;
+            }
+            if (event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_EXPOSED ||
+                    event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+
+                    surface = SDL_GetWindowSurface(window);  // <-- Refresh pointer!
+                    SDL_BlitScaled(rgb565_surface, NULL, surface, &destRect);
+                    SDL_UpdateWindowSurface(window);
+                }
             }
             if (event.type == SDL_KEYDOWN) {
                 inputs[event.key.keysym.scancode] = 1;
@@ -192,9 +220,9 @@ int main(int argc, char* argv[]) {
                         character.y += 1*cos(a);
                     }
                     if (event.key.keysym.sym == SDLK_DOWN) {
-                            float a = DEG2RAD(character.yaw);
-                            character.x -= 1*sin(a);
-                            character.y -= 1*cos(a);
+                        float a = DEG2RAD(character.yaw);
+                        character.x -= 1*sin(a);
+                        character.y -= 1*cos(a);
                     }
                     if (event.key.keysym.sym == SDLK_LEFT) {
                             character.yaw -= 3;
@@ -210,28 +238,24 @@ int main(int argc, char* argv[]) {
                 inputs[event.key.keysym.scancode] = 0;
             }
         }
-
         int yaw = character.yaw;
         float pSn = sn[yaw];
         float pCs = cs[yaw];
-
         int characterSector = isChrWithinConvexSector();        
         if ((characterSector > -1) & (characterSector <= level->count)) {
             sector *playerSector = level->sectors[characterSector];
             character.z = playerSector->elevation;
-            
-            //console.profile();
             startDrawSector((Uint16 *)rgb565_surface->pixels, level, playerSector, character, pSn, pCs, portalBounds, characterSector);
             gettimeofday(&end, NULL);
         }
-        optimized_blt_and_update(rgb565_surface, surface, window);
-        
+        SDL_BlitScaled(rgb565_surface, NULL, surface, &destRect);
+        SDL_UpdateWindowSurface(window);
+
         double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
         time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
-        memset(rgb565_surface->pixels, 0, rgb565_surface->h*rgb565_surface->pitch);
         fI++;
         fAvg += time_spent;
-        if (fI == 240) {
+        if (fI == 120) {
             char str[10];
             fAvg /= fI;
             sprintf(str, "%.4lf", (double)(1/fAvg));
@@ -247,4 +271,3 @@ int main(int argc, char* argv[]) {
 }
 
 //clang -std=c17 main.c -O3 -ffast-math -flto -march=native -funroll-loops -IC:\Users\frase\OneDrive\Desktop\CProjects\C\SDL2 -LC:\Users\frase\OneDrive\Desktop\CProjects\C\SDL2\lib -Wall -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -o main
-

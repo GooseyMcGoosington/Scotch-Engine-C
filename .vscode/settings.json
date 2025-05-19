@@ -89,6 +89,7 @@
     "typeinfo": "c",
     "config.h": "c",
     "tloader.h": "c",
-    "cstddef": "c"
+    "cstddef": "c",
+    "fasttrig.h": "c"
   }
 }

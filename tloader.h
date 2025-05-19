@@ -13,7 +13,7 @@
 tlut *texture_list = NULL;
 
 // Function to load texture using stb_image
-tfile load_texture(char *filename) {
+tfile load_texture(char *filename, int scale) {
     int width, height, channels;
     unsigned char *image = stbi_load(filename, &width, &height, &channels, 0);
 
@@ -38,15 +38,15 @@ tfile load_texture(char *filename) {
 
     stbi_image_free(image);
 
-    tfile file = {rgb565_pixels, width, height};
+    tfile file = {rgb565_pixels, width, height, scale};
     return file;
 }
 
 void init_textures() {
     texture_list = malloc(sizeof(tlut));
     texture_list->files = malloc(MAX_TEXTURES * sizeof(tfile));
-    texture_list->files[0] = load_texture("textures/tile110.png");
-    texture_list->files[1] = load_texture("textures/tile115.png");
+    texture_list->files[0] = load_texture("textures/tile110.png", 0);
+    texture_list->files[1] = load_texture("textures/tile115.png", 0);
 
     //if (texture_list->files[0].pixels != NULL) {
     //    printf("Loaded texture, first pixel value: %x\n", texture_list->files[0].pixels[0]);
