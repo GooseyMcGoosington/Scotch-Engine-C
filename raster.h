@@ -53,7 +53,7 @@ int pointWallCollision(float px, float py, float ax, float ay, float bx, float b
     }
 }
 
-void drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds) {
+void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds) {
     wall *walls = Sector->walls;
     size_t wallCount = Sector->count;
     
@@ -181,11 +181,41 @@ void drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, 
             portalQueue[portalCount++] = newPortal;
         }
     }
-    //draw_flat(pixels, ceilingLut, 1, portalBounds, ez0, character.fov, character.yaw, character.focalLength, character.x, character.y, ceiling_texture.pixels);
-    //draw_flat(pixels, floorLut, 2, portalBounds, ez1, character.fov, character.yaw, character.focalLength, character.x, character.y, floor_texture.pixels);
     dispatch_flat(pixels, ceilingLut, 1, portalBounds, ez0, character.fov, character.yaw, character.focalLength, character.x, character.y, ceiling_texture.pixels, ceiling_texture.scale);
     dispatch_flat(pixels, floorLut, 2, portalBounds, ez1, character.fov, character.yaw, character.focalLength, character.x, character.y, floor_texture.pixels, floor_texture.scale);
 
+    for (int entityIndex=0; entityIndex <Sector->amnt_entities; entityIndex++) {
+        entity *Entity = &Sector->entities[entityIndex];
+
+        float rx = Entity->x - px;
+        float ry = Entity->y - py;
+        float tx = rx * pCs - ry * pSn;
+        float ty = ry * pCs + rx * pSn;
+        if (ty < 1) {
+            continue;
+        }
+        float inv_ty = (1/ty)*character.focalLength;
+        float ez = Sector->elevation+Entity->h;
+        float sx = tx * inv_ty + SW2;
+        float sy = (wz1-ez) * inv_ty + SH2;
+
+        if (!Entity->animated) {
+            tfile tex = texture_list->files[Entity->tid+Entity->a];
+            uint16_t *t_pixels = tex.pixels;
+            R_RENDER_ENTITY(pixels, t_pixels, portalBounds, sx, sy, ty, character.focalLength, tex.width, tex.height);
+        } else {
+            if (Entity->a > 3) {
+                Entity->a = 0;
+            }
+            tfile tex = texture_list->files[Entity->tid+Entity->a];
+
+            uint16_t *t_pixels = tex.pixels;
+            if (tick) {
+                Entity->a ++;
+            }
+            R_RENDER_ENTITY(pixels, t_pixels, portalBounds, sx, sy, ty, character.focalLength, tex.width, tex.height);
+        }
+    }
     for (int portalIndex=0; portalIndex<portalCount; portalIndex++) {
         portalRender portalInfo = portalQueue[portalIndex];
         if (portalInfo.sector_link == originSector) {
@@ -197,17 +227,17 @@ void drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, 
             traversedPortals[portalInfo.uid] = 1;
         }
         sector *portalSector = level->sectors[portalInfo.sector_link];
-        drawSector(pixels, level, portalSector, character, pSn, pCs, portalInfo.portalBounds);
+        R_drawSector(pixels, level, portalSector, character, pSn, pCs, portalInfo.portalBounds);
     }
     free(portalQueue);
 }
 
-void startDrawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds, int origin) {
+void R_startDrawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds, int origin) {
     originSector = origin;
     for (int x = 0; x<MAX_WALLS; x++) {
         traversedPortals[x] = 0;
     }
-    drawSector(pixels, level, Sector, character, pSn, pCs, portalBounds);
+    R_drawSector(pixels, level, Sector, character, pSn, pCs, portalBounds);
 }
 
 void R_INIT() {

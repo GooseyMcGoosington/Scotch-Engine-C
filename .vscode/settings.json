@@ -90,6 +90,9 @@
     "config.h": "c",
     "tloader.h": "c",
     "cstddef": "c",
-    "fasttrig.h": "c"
+    "fasttrig.h": "c",
+    "stdalign.h": "c",
+    "stb_image.h": "c",
+    "random": "c"
   }
 }

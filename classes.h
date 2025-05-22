@@ -19,10 +19,22 @@ typedef struct {
 } wall;
 
 typedef struct {
+    int8_t anchored;
+    float x;
+    float y;
+    float h;
+    int8_t tid;
+    int8_t animated;
+    int8_t a;
+} entity;
+
+typedef struct {
     float elevation;
     float height;
     int cIndex;
     int fIndex;
+    int amnt_entities;
+    entity *entities;
     size_t count;
     wall walls[];
 } sector;

@@ -20,10 +20,8 @@ static int SH1 = 1079;
 static int SW2 = 960;
 static int SH2 = 540;
 
-#define TEXTURE_DETAIL_MODE 1 // This controls how detailed textures are.
-#define DEPTH_SHADING 1 // This controls whether depth shading is enabled.
 #define MAX_WALLS 512
-#define MAX_TEXTURES 64
+#define MAX_TEXTURES 255
 #define MAX_TEXTURESIZE (128 * 128)
 
 inline int clamp(int val, int minVal, int maxVal) {
@@ -42,6 +40,7 @@ const int resolutions[10] = {
 };
 
 static int resolutionSet = 0;
+static int tick = 0;
 
 static inline void CFG_Init(int x) {
     resolutionSet = x;

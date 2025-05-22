@@ -12,45 +12,18 @@
 #include <math.h>
 #include <stdalign.h>
 
-player character = {20.0, -10.0, 0.0, 5.0, 90.0, 70.0, 90.0, 0.0};
+player character = {20.0, -10.0, 0.0, 5.0, 0.0, 70.0, 90.0, 0.0};
 Level *level = NULL;
 
-alignas(32) float sn[360];
-alignas(32) float cs[360];
+float sn[360];
+float cs[360];
 
 int control_locked = 0;
 int fI = 0;
 int inputs[256];
-
 double fAvg = 0;
 
-static inline void optimized_blt_and_update(SDL_Surface *rgb565_surface, SDL_Surface *surface, SDL_Window *window) {
-    int width = rgb565_surface->w;
-    int height = rgb565_surface->h;
-
-    Uint16 *src_pixels = (Uint16*)rgb565_surface->pixels;
-    Uint32 *dst_pixels = (Uint32*)surface->pixels;
-
-    Uint16 *src = src_pixels;
-    Uint32 *dst = dst_pixels;
-    //G_HANDLE_IMAGE(rgb565_surface, window);
-    for (int i = 1; i < (width*height); i++) {
-        Uint16 src_pixel = *src++;
-        int r1 = (src_pixel >> 11) & 0x1F; 
-        int g1 = (src_pixel >> 5) & 0x3F;
-        int b1 = src_pixel & 0x1F;
-
-        Uint32 pixel = 0xFF000000 |
-            (r1<<19) |
-            (g1<<10)  |
-            (b1<<3);
-
-        *dst++ = pixel;
-    }
-    //G_HANDLE_IMAGE(rgb565_surface, window, &texture_list);
-    //G_HANDLE(surface, window, inputs);
-    SDL_UpdateWindowSurface(window);
-};
+int timer = 0;
 
 int isChrWithinConvexSector() {
     int i = 0;
@@ -141,6 +114,13 @@ int main(int argc, char* argv[]) {
     sect->walls[4] = (wall){0, 40, 40, 40, 0, 0, 0, 0, 0, 0, 5};
     sect->walls[5] = (wall){30, 10, 0, 0, 1, 2, 2, 1, 0, 0, 6};
 
+    sect->amnt_entities = 3;
+    sect->entities = malloc(sect->amnt_entities*sizeof(entity));
+    sect->entities[0] = (entity){1, 10, 10, 1, 2, 1, 0};
+    sect->entities[1] = (entity){1, 10, 15, 1, 6, 0, 0};
+    sect->entities[2] = (entity){1, 10, 20, 1, 7, 0, 0};
+
+
     level->sectors[1] = malloc(sizeof(sector) + 4 * sizeof(wall));
     sector *sect1 = level->sectors[1];
     sect1->count = 4;
@@ -153,7 +133,7 @@ int main(int argc, char* argv[]) {
     sect1->walls[1] = (wall){10, 10, -15, 0, 0, 0, 0, 0, 0, 1, 8};
     sect1->walls[2] = (wall){30, 40, 0, -15, 0, 0, 0, 0, 0, 1, 9};
     sect1->walls[3] = (wall){10, 30, 0, 0, 1, 0, 0, 0, 0, 0, 10};
-
+    
     level->sectors[2] = malloc(sizeof(sector) + 4 * sizeof(wall));
     sector *sect2 = level->sectors[2];
     sect2->count = 4;
@@ -245,7 +225,7 @@ int main(int argc, char* argv[]) {
         if ((characterSector > -1) & (characterSector <= level->count)) {
             sector *playerSector = level->sectors[characterSector];
             character.z = playerSector->elevation;
-            startDrawSector((Uint16 *)rgb565_surface->pixels, level, playerSector, character, pSn, pCs, portalBounds, characterSector);
+            R_startDrawSector((Uint16 *)rgb565_surface->pixels, level, playerSector, character, pSn, pCs, portalBounds, characterSector);
             gettimeofday(&end, NULL);
         }
         SDL_BlitScaled(rgb565_surface, NULL, surface, &destRect);
@@ -255,7 +235,7 @@ int main(int argc, char* argv[]) {
         time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
         fI++;
         fAvg += time_spent;
-        if (fI == 120) {
+        if (fI == 60) {
             char str[10];
             fAvg /= fI;
             sprintf(str, "%.4lf", (double)(1/fAvg));
@@ -263,6 +243,9 @@ int main(int argc, char* argv[]) {
             fI = 0;
             fAvg = 0;
         }
+        timer ++;
+        tick = (timer % 7 == 0) ? 1 : 0;
+        SDL_Delay(16);
     }
     //G_QUIT();
     SDL_DestroyWindow(window);

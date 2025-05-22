@@ -47,6 +47,12 @@ void init_textures() {
     texture_list->files = malloc(MAX_TEXTURES * sizeof(tfile));
     texture_list->files[0] = load_texture("textures/tile110.png", 0);
     texture_list->files[1] = load_texture("textures/tile115.png", 0);
+    texture_list->files[2] = load_texture("textures/mega1.png", 0);
+    texture_list->files[3] = load_texture("textures/mega2.png", 0);
+    texture_list->files[4] = load_texture("textures/mega3.png", 0);
+    texture_list->files[5] = load_texture("textures/mega4.png", 0);
+    texture_list->files[6] = load_texture("textures/shotgun.png", 0);
+    texture_list->files[7] = load_texture("textures/keycardred.png", 0);
 
     //if (texture_list->files[0].pixels != NULL) {
     //    printf("Loaded texture, first pixel value: %x\n", texture_list->files[0].pixels[0]);

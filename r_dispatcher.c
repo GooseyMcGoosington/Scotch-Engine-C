@@ -629,377 +629,512 @@ static inline __attribute__((always_inline)) float fast_cos(float x) {
     return fast_sin(x + 0.5f * PI);
 }
 
+static float sinBetaArr[1920];
+static float invSinBetaArr[1920];
+static float sinAlphaArr[1920];
+static float cosAlphaArr[1920];
+static int clampY0Arr[1920];
+static int clampY1Arr[1920];
+
 static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
-    int X0 = clamp(clamp((int)0, portalBounds.x0, portalBounds.x1), 1, 1919);
-    int X1 = clamp(clamp((int)1919, portalBounds.x0, portalBounds.x1), 1, 1919);
+    const int SH2 = 1080 / 2;
+    const int TX_SHIFT = 3;  // 1 << 3 = 8
+    const int TY_SHIFT = 6;  // 1 << 6 = 64
+    const int TX_MASK = 0x3F;
+    const int TY_MASK = 0x3F;
 
-    float radFOV = (float)fov*PI/180.0;
-    float halfRFOV = radFOV/2.0;
-    float radYaw = (float)((int)yaw)*PI/180.0;
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 1919);
+    int X1 = clamp(clamp(1919, portalBounds.x0, portalBounds.x1), 1, 1919);
+
+    float radFOV = fov * PI / 180.0f;
+    float halfRFOV = radFOV / 2.0f;
+    float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
+    float radFOV_1919 = radFOV / 1919.0f;
 
-    switch (flat) {
-        case 1:
-            for (int x=X0; x<X1; x++) {
-                float st = (x-portalBounds.x0)/portalBounds.dxCull;
-                float beta = ((float)x) * (radFOV / 1919.0f) + halfRFOV;
-                float alpha = radYaw+beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
-                
-                float inv_sin_beta = 1/sin_beta;
-                
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+    // Precompute per-x values
+    for (int x = X0; x < X1; x++) {
+        int i = x - X0;
+        float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
+        float beta = ((float)x) * radFOV_1919 + halfRFOV;
+        float alpha = radYaw + beta;
 
-                int Y0 = clamp(1, clampY0, clampY1);
-                int Y1 = clamp(lut[x], clampY0, clampY1);
+        float sin_beta = fast_sin(beta);
+        // Prevent division by zero - clamp sin_beta
+        if (fabsf(sin_beta) < 1e-6f) sin_beta = 1e-6f;
 
-                int row = Y0 * 1920 + x;
-                for (int y = Y0; y < Y1; y++) {
-                    float R = abs(y - 540);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist * inv_sin_beta);
-                    float wx = cy + (sin_alpha * d);
-                    float wy = cx - (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
+        sinBetaArr[i] = sin_beta;
+        invSinBetaArr[i] = 1.0f / sin_beta;
 
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = ((int)straightDist<<6)/f;
-                    int shade = (int)(1+dS);
-                    
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-                    
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 1920;
-                }
-            }
-            break;
-        case 2:
-        for (int x=X0; x<X1; x++) {
-            float st = (x-portalBounds.x0)/portalBounds.dxCull;
-            float beta = ((float)x) * (radFOV / 1919.0f) + halfRFOV;
-            float alpha = radYaw+beta;
-            float sin_beta = fast_sin(beta);
-            float sin_alpha = fast_sin(alpha);
-            float cos_alpha = fast_cos(alpha);
-            float inv_sin_beta = 1/sin_beta;
+        sinAlphaArr[i] = fast_sin(alpha);
+        cosAlphaArr[i] = fast_cos(alpha);
 
-            int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-            int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+        clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+    }
 
-            int Y1 = clamp(1079, clampY0, clampY1);
-            int Y0 = clamp(lut[x], clampY0, clampY1);
+    if (flat == 1) {
+        // Precompute distLUT for R = abs(y - SH2)
+        static float distLUT[1080];
+        for (int y = 0; y < 1080; y++) {
+            int R = abs(y - SH2);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+        }
 
-            int row = Y0*1920+x;
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y0 = clamp(1, clampY0, clampY1);
+            int Y1 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 1920 + x;
             for (int y = Y0; y < Y1; y++) {
-                float R = (y-SH2);
-                float straightDist = elevationFactor / R;
-                float d = (straightDist * inv_sin_beta);
-                float wx = cy - (sin_alpha * d);
-                float wy = cx + (cos_alpha * d);
-                register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                register int ty = ((int)(wy * (1 << 3))) & 0x3F;
+                float straightDist = distLUT[y];
+                float d = straightDist * inv_sin_beta;
 
-                register int index = ty * (1 << 6) + tx;
-                int dS = abs((int)straightDist<<6)/f;
-                int shade = (int)(1+dS);
-                register uint16_t baseColour = t_pixels[index];
-                register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                register uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-                register uint8_t b = ((baseColour & 0x1F) >> shade);
-                
+                float wx = cy + sin_alpha * d;
+                float wy = cx - cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
                 pixels[row] = (r << 11) | (g << 5) | b;
                 row += 1920;
             }
         }
-        break;
+    } else if (flat == 2) {
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y1 = clamp(1080 - 1, clampY0, clampY1);
+            int Y0 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 1920 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float R = (float)(y - SH2);
+                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
+                float straightDist = elevationFactor / R;
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy - sin_alpha * d;
+                float wy = cx + cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 1920;
+            }
+        }
     }
-};
+}
 
 static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
+    const int SH2 = 768 / 2;
+    const int TX_SHIFT = 3;  // 1 << 3 = 8
+    const int TY_SHIFT = 6;  // 1 << 6 = 64
+    const int TX_MASK = 0x3F;
+    const int TY_MASK = 0x3F;
+
     int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 1023);
     int X1 = clamp(clamp(1023, portalBounds.x0, portalBounds.x1), 1, 1023);
 
-    float radFOV = (float)fov * PI / 180.0;
-    float halfRFOV = radFOV / 2.0;
-    float radYaw = (float)((int)yaw) * PI / 180.0;
+    float radFOV = fov * PI / 180.0f;
+    float halfRFOV = radFOV / 2.0f;
+    float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
+    float radFOV_1023 = radFOV / 1023.0f;
 
-    switch (flat) {
-        case 1:
-            for (int x = X0; x < X1; x++) {
-                float st = (x - portalBounds.x0) / portalBounds.dxCull;
-                float beta = ((float)x / 1023.0f) * radFOV + halfRFOV;
-                float alpha = radYaw + beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
+    // Precompute per-x values
+    for (int x = X0; x < X1; x++) {
+        int i = x - X0;
+        float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
+        float beta = ((float)x) * radFOV_1023 + halfRFOV;
+        float alpha = radYaw + beta;
 
-                float inv_sin_beta = 1 / sin_beta;
+        float sin_beta = fast_sin(beta);
+        // Prevent division by zero - clamp sin_beta
+        if (fabsf(sin_beta) < 1e-6f) sin_beta = 1e-6f;
 
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+        sinBetaArr[i] = sin_beta;
+        invSinBetaArr[i] = 1.0f / sin_beta;
 
-                int Y0 = clamp(1, clampY0, clampY1);
-                int Y1 = clamp(lut[x], clampY0, clampY1);
+        sinAlphaArr[i] = fast_sin(alpha);
+        cosAlphaArr[i] = fast_cos(alpha);
 
-                int row = Y0 * 1024 + x;
-
-                for (int y = Y0; y < Y1; y++) {
-                    float R = abs(y - 384);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist * inv_sin_beta);
-                    float wx = cy + (sin_alpha * d);
-                    float wy = cx - (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
-
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = ((int)straightDist << 6) / f;
-                    int shade = (int)(1 + dS);
-
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 1024;
-                }
-            }
-            break;
-        case 2:
-            for (int x = X0; x < X1; x++) {
-                float st = (x - portalBounds.x0) / portalBounds.dxCull;
-                float beta = ((float)x / 1023.0f) * radFOV + halfRFOV;
-                float alpha = radYaw + beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
-
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
-
-                int Y1 = clamp(767, clampY0, clampY1);
-                int Y0 = clamp(lut[x], clampY0, clampY1);
-
-                int row = Y0 * 1024 + x;
-                for (int y = Y0; y < Y1; y++) {
-                    float R = (y - 384);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist / sin_beta);
-                    float wx = cy - (sin_alpha * d);
-                    float wy = cx + (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
-
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = abs((int)straightDist << 6) / f;
-                    int shade = (int)(1 + dS);
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 1024;
-                }
-            }
-            break;
+        clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
-};
+
+    if (flat == 1) {
+        // Precompute distLUT for R = abs(y - SH2)
+        static float distLUT[768];
+        for (int y = 0; y < 768; y++) {
+            int R = abs(y - SH2);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+        }
+
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y0 = clamp(1, clampY0, clampY1);
+            int Y1 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 1024 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float straightDist = distLUT[y];
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy + sin_alpha * d;
+                float wy = cx - cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 1024;
+            }
+        }
+    } else if (flat == 2) {
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y1 = clamp(767, clampY0, clampY1);
+            int Y0 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 1024 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float R = (float)(y - SH2);
+                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
+                float straightDist = elevationFactor / R;
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy - sin_alpha * d;
+                float wy = cx + cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 1024;
+            }
+        }
+    }
+}
 
 static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
-    int X0 = clamp(clamp((int)0, portalBounds.x0, portalBounds.x1), 1, 799);
-    int X1 = clamp(clamp((int)799, portalBounds.x0, portalBounds.x1), 1, 799);
+    const int SH2 = 600 / 2;
+    const int TX_SHIFT = 3;  // 1 << 3 = 8
+    const int TY_SHIFT = 6;  // 1 << 6 = 64
+    const int TX_MASK = 0x3F;
+    const int TY_MASK = 0x3F;
 
-    float radFOV = (float)fov * PI / 180.0;
-    float halfRFOV = radFOV / 2.0;
-    float radYaw = (float)((int)yaw) * PI / 180.0;
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 799);
+    int X1 = clamp(clamp(799, portalBounds.x0, portalBounds.x1), 1, 799);
+
+    float radFOV = fov * PI / 180.0f;
+    float halfRFOV = radFOV / 2.0f;
+    float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
+    float radFOV_799 = radFOV / 799.0f;
 
-    switch (flat) {
-        case 1:
-            for (int x = X0; x < X1; x++) {
-                float st = (x - portalBounds.x0) / portalBounds.dxCull;
-                float beta = ((float)x / (float)799) * radFOV + halfRFOV;
-                float alpha = radYaw + beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
+    // Precompute per-x values
+    for (int x = X0; x < X1; x++) {
+        int i = x - X0;
+        float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
+        float beta = ((float)x) * radFOV_799 + halfRFOV;
+        float alpha = radYaw + beta;
 
-                float inv_sin_beta = 1 / sin_beta;
+        float sin_beta = fast_sin(beta);
+        // Prevent division by zero - clamp sin_beta
+        if (fabsf(sin_beta) < 1e-6f) sin_beta = 1e-6f;
 
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+        sinBetaArr[i] = sin_beta;
+        invSinBetaArr[i] = 1.0f / sin_beta;
 
-                int Y0 = clamp(1, clampY0, clampY1);
-                int Y1 = clamp(lut[x], clampY0, clampY1);
+        sinAlphaArr[i] = fast_sin(alpha);
+        cosAlphaArr[i] = fast_cos(alpha);
 
-                int row = Y0 * 800 + x;
-
-                for (int y = Y0; y < Y1; y++) {
-                    float R = abs(y - 300);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist * inv_sin_beta);
-                    float wx = cy + (sin_alpha * d);
-                    float wy = cx - (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
-
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = ((int)straightDist << 6) / f;
-                    int shade = (int)(1 + dS);
-
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 800;
-                }
-            }
-            break;
-        case 2:
-            for (int x = X0; x < X1; x++) {
-                float st = (x - portalBounds.x0) / portalBounds.dxCull;
-                float beta = ((float)x / (float)799) * radFOV + halfRFOV;
-                float alpha = radYaw + beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
-
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
-
-                int Y1 = clamp(599, clampY0, clampY1);
-                int Y0 = clamp(lut[x], clampY0, clampY1);
-
-                int row = Y0 * 800 + x;
-                for (int y = Y0; y < Y1; y++) {
-                    float R = (y - 300);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist / sin_beta);
-                    float wx = cy - (sin_alpha * d);
-                    float wy = cx + (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
-
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = abs((int)straightDist << 6) / f;
-                    int shade = (int)(1 + dS);
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 800;
-                }
-            }
-            break;
+        clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
-};
+
+    if (flat == 1) {
+        // Precompute distLUT for R = abs(y - SH2)
+        static float distLUT[600];
+        for (int y = 0; y < 600; y++) {
+            int R = abs(y - SH2);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+        }
+
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y0 = clamp(1, clampY0, clampY1);
+            int Y1 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 800 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float straightDist = distLUT[y];
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy + sin_alpha * d;
+                float wy = cx - cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 800;
+            }
+        }
+    } else if (flat == 2) {
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y1 = clamp(600 - 1, clampY0, clampY1);
+            int Y0 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 800 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float R = (float)(y - SH2);
+                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
+                float straightDist = elevationFactor / R;
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy - sin_alpha * d;
+                float wy = cx + cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 800;
+            }
+        }
+    }
+}
 
 static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
-    int X0 = clamp(clamp((int)0, portalBounds.x0, portalBounds.x1), 1, 639);
-    int X1 = clamp(clamp((int)639, portalBounds.x0, portalBounds.x1), 1, 639);
+    const int SH2 = 480 / 2;
+    const int TX_SHIFT = 3;  // 1 << 3 = 8
+    const int TY_SHIFT = 6;  // 1 << 6 = 64
+    const int TX_MASK = 0x3F;
+    const int TY_MASK = 0x3F;
 
-    float radFOV = (float)fov * PI / 180.0;
-    float halfRFOV = radFOV / 2.0;
-    float radYaw = (float)((int)yaw) * PI / 180.0;
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 639);
+    int X1 = clamp(clamp(639, portalBounds.x0, portalBounds.x1), 1, 639);
+
+    float radFOV = fov * PI / 180.0f;
+    float halfRFOV = radFOV / 2.0f;
+    float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
+    float radFOV_639 = radFOV / 639.0f;
 
-    switch (flat) {
-        case 1:
-            for (int x = X0; x < X1; x++) {
-                float st = (x - portalBounds.x0) / portalBounds.dxCull;
-                float beta = ((float)x / (float)639) * radFOV + halfRFOV;
-                float alpha = radYaw + beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
+    // Precompute per-x values
+    for (int x = X0; x < X1; x++) {
+        int i = x - X0;
+        float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
+        float beta = ((float)x) * radFOV_639 + halfRFOV;
+        float alpha = radYaw + beta;
 
-                float inv_sin_beta = 1 / sin_beta;
+        float sin_beta = fast_sin(beta);
+        // Prevent division by zero - clamp sin_beta
+        if (fabsf(sin_beta) < 1e-6f) sin_beta = 1e-6f;
 
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+        sinBetaArr[i] = sin_beta;
+        invSinBetaArr[i] = 1.0f / sin_beta;
 
-                int Y0 = clamp(1, clampY0, clampY1);
-                int Y1 = clamp(lut[x], clampY0, clampY1);
+        sinAlphaArr[i] = fast_sin(alpha);
+        cosAlphaArr[i] = fast_cos(alpha);
 
-                int row = Y0 * 640 + x;
-
-                for (int y = Y0; y < Y1; y++) {
-                    float R = abs(y - 240);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist * inv_sin_beta);
-                    float wx = cy + (sin_alpha * d);
-                    float wy = cx - (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
-
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = ((int)straightDist << 6) / f;
-                    int shade = (int)(1 + dS);
-
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 640;
-                }
-            }
-            break;
-        case 2:
-            for (int x = X0; x < X1; x++) {
-                float st = (x - portalBounds.x0) / portalBounds.dxCull;
-                float beta = ((float)x / (float)639) * radFOV + halfRFOV;
-                float alpha = radYaw + beta;
-                float sin_beta = fast_sin(beta);
-                float sin_alpha = fast_sin(alpha);
-                float cos_alpha = fast_cos(alpha);
-
-                int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
-                int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
-
-                int Y1 = clamp(479, clampY0, clampY1);
-                int Y0 = clamp(lut[x], clampY0, clampY1);
-
-                int row = Y0 * 640 + x;
-                for (int y = Y0; y < Y1; y++) {
-                    float R = (y - 240);
-                    float straightDist = elevationFactor / R;
-                    float d = (straightDist / sin_beta);
-                    float wx = cy - (sin_alpha * d);
-                    float wy = cx + (cos_alpha * d);
-                    register int tx = ((int)(wx * (1 << 3))) & 0x3F;
-                    register int ty = ((int)(wy * (1 << 3))) & 0x3F;
-
-                    register int index = ty * (1 << 6) + tx;
-                    int dS = abs((int)straightDist << 6) / f;
-                    int shade = (int)(1 + dS);
-                    register uint16_t baseColour = t_pixels[index];
-                    register uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                    register uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                    register uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                    pixels[row] = (r << 11) | (g << 5) | b;
-                    row += 640;
-                }
-            }
-            break;
+        clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
-};
+
+    if (flat == 1) {
+        // Precompute distLUT for R = abs(y - SH2)
+        static float distLUT[480];
+        for (int y = 0; y < 480; y++) {
+            int R = abs(y - SH2);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+        }
+
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y0 = clamp(1, clampY0, clampY1);
+            int Y1 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 640 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float straightDist = distLUT[y];
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy + sin_alpha * d;
+                float wy = cx - cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 640;
+            }
+        }
+    } else if (flat == 2) {
+        for (int x = X0; x < X1; x++) {
+            int i = x - X0;
+            float inv_sin_beta = invSinBetaArr[i];
+            float sin_alpha = sinAlphaArr[i];
+            float cos_alpha = cosAlphaArr[i];
+
+            int clampY0 = clampY0Arr[i];
+            int clampY1 = clampY1Arr[i];
+
+            int Y1 = clamp(480 - 1, clampY0, clampY1);
+            int Y0 = clamp(lut[x], clampY0, clampY1);
+
+            int row = Y0 * 640 + x;
+            for (int y = Y0; y < Y1; y++) {
+                float R = (float)(y - SH2);
+                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
+                float straightDist = elevationFactor / R;
+                float d = straightDist * inv_sin_beta;
+
+                float wx = cy - sin_alpha * d;
+                float wy = cx + cos_alpha * d;
+
+                int tx = ((int)(wx * (1 << TX_SHIFT))) & TX_MASK;
+                int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
+
+                int index = ty * (1 << TY_SHIFT) + tx;
+
+                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
+                int shade = 1 + dS;
+
+                uint16_t baseColour = t_pixels[index];
+                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
+                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
+                uint8_t b = ((baseColour & 0x1F) >> shade);
+
+                pixels[row] = (r << 11) | (g << 5) | b;
+                row += 640;
+            }
+        }
+    }
+}
 
 static inline void dispatch_flat(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels, int scale) {
     switch (resolutionSet) {
@@ -1025,4 +1160,67 @@ static inline void dispatch_flat(Uint16 *restrict pixels, int *restrict lut, int
         }
     }
 }
+
+static inline void R_RENDER_ENTITY(Uint16 *restrict pixels, uint16_t *restrict t_pixels, portalCull portalBounds, int16_t x, int16_t y, float ty, float f, int W, int H) {
+    if (ty <= 0.01f || portalBounds.dxCull <= 0.0001f) return;
+    
+    const float scaleX = (float)(W*64) / ty; // 64*64 = 4096
+    const int tScaleX = (int)scaleX;
+    const int tHalfX = tScaleX >> 1;
+
+    const float scaleY = (float)(H*64) / ty; // 64*64 = 4096
+    const int tScaleY = (int)scaleY;
+    const int tHalfY = tScaleY >> 1;
+
+    const int usx = x - tHalfX;
+    const int uex = x + tHalfX;
+    const int usy = y - tHalfY;
+    const int uey = y + tHalfY;
+
+    const int sx = clamp(usx, 1, SW1);
+    const int ex = clamp(uex, 1, SW1);
+
+    const int tex_w = W;
+    const int tex_h = H;
+
+    const float inv_dx = 1.0f / portalBounds.dxCull;
+    const float inv_w = 1.0f / (float)(uex - usx);
+    const float inv_h = 1.0f / (float)(uey - usy);
+
+    for (int px = sx; px < ex; ++px) {
+        float st = (px - portalBounds.x0) * inv_dx;
+        if (st < 0.0f || st > 1.0f) continue;
+
+        int clampY0 = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        int clampY1 = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
+
+        int sy = clamp(usy, clampY0, clampY1);
+        int ey = clamp(uey, clampY0, clampY1);
+        sy = clamp(sy, 1, SH1);
+        ey = clamp(ey, 1, SH1);
+
+        if (ey <= sy) continue;
+
+        float v = (float)(px - usx) * inv_w;
+        int tpx = (int)(v * tex_w);
+        if ((unsigned)tpx >= tex_w) continue;
+
+        for (int py = sy; py < ey; ++py) {
+            float u = (float)(py - usy) * inv_h;
+            int tpy = (int)(u * tex_h);
+            if ((unsigned)tpy >= tex_h) continue;
+
+            int tex_idx = tpy * tex_w + tpx;
+            uint16_t color = t_pixels[tex_idx];
+            if (!color) continue;
+
+            pixels[py * SW + px] = color;
+        }
+    }
+}
+
+
+
+
+
 #endif
