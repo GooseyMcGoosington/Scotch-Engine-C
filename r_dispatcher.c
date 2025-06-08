@@ -724,17 +724,15 @@ static inline void dispatch_wall(float sx0, float sx1,
     }
 }
 
-#define TWO_PI (2.0f * PI)
-#define INV_TWO_PI (0.1591549430918953358f)  // 1/(2π)
+#define INV_TWO_PI (0.1591549430918953358f)
 
-// This should instead, later on, invert the output or something.
 const float B =  1.27323954473516268f;
 const float C = -0.40528473456935109f;
 static inline __attribute__((always_inline))
 float fast_sin(float x) {
     float t = x * INV_TWO_PI + (x >= 0 ? 0.5f : -0.5f);
     int   k = (int)t; 
-    x = x - (float)k * TWO_PI;
+    x = x - (float)k * PI2;
     float ax = fabsf(x);
     return (B * x) + (C * x * ax);
 }
