@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
         }
         timer ++;
         tick = (timer % 7 == 0) ? 1 : 0;
-        SDL_Delay(33);
+        SDL_Delay(10);
     }
     //G_QUIT();
     SDL_DestroyWindow(window);
