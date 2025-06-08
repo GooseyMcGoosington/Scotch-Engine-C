@@ -95,19 +95,16 @@ void R_drawSector(Uint8 *pixels, Level *level, sector *Sector, player character,
         if (((((cWall.y1-cWall.y0) * rx1) + (-(cWall.x1-cWall.x0)*ry1)) > -1)) {
             continue;
         }
-        //int hasClipped = 0;
         float t0 = 0;
         float t1 = 1;
 
         float t = 0;
         if (ty0 < 1) {
             clip(&tx0, &ty0, &t, tx1, ty1, 1.0, 1.0, (float)SW, 1.0);
-            //hasClipped = 1;
             t1 += t/character.fovWidth;
         } 
         if (ty1 < 1) {
             clip(&tx1, &ty1, &t, tx0, ty0, 1.0, 1.0, (float)SW, 1.0);
-            //hasClipped = 2;
             t0 -= t/character.fovWidth;
         }
 
@@ -194,7 +191,6 @@ void R_drawSector(Uint8 *pixels, Level *level, sector *Sector, player character,
             traversedPortals[portalInfo.uid] = 1;
         }
         sector *portalSector = level->sectors[portalInfo.sector_link];
-        //printf("Traversing into Sector %d\n", portalInfo.sector_link);
         R_drawSector(pixels, level, portalSector, character, pSn, pCs, portalInfo.portalBounds, 0);
     }
     for (int entityIndex=0; entityIndex <Sector->amnt_entities; entityIndex++) {

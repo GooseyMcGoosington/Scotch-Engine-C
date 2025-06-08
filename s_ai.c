@@ -247,7 +247,6 @@ static inline void S_GENERATE_GRAPH(Level *level) {
                 portal_ref_array[Portal->uid] = portal_ref;
                 setReachable(portal_tree.portals[portal_ref].canReach, Portal->portal_link); // example; portal uid 15 given by ref 0 links up with sector 2
                 traversedPortals[Portal->uid] = 1;
-                //printf("ref %d  link %d origin %d\n", isReachable(portal_tree.portals[portal_ref].canReach, Portal->portal_link), Portal->portal_link, hs);
 
                 S_TRAVERSE(level, OriginSector, level->sectors[Portal->portal_link]);
                 portal_ref ++;

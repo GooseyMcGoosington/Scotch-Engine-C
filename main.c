@@ -57,8 +57,6 @@ void fill_palette(SDL_Color *palette) {
             }
         }
     }
-
-    // Gamma-corrected grayscale ramp (24 shades)
     for (int i = 0; i < 24; i++) {
         float norm = i / 23.0f;
         uint8_t val = (uint8_t)(powf(norm, 2.2f) * 255.0f);
@@ -66,8 +64,6 @@ void fill_palette(SDL_Color *palette) {
         palette[232 + i].g = val;
         palette[232 + i].b = val;
     }
-
-    // Warm glow ramp for effects (16 shades)
     static const SDL_Color glow[16] = {
         {0x10, 0x04, 0x00}, {0x20, 0x08, 0x00}, {0x40, 0x10, 0x00}, {0x60, 0x20, 0x00},
         {0x80, 0x30, 0x00}, {0xA0, 0x40, 0x00}, {0xC0, 0x60, 0x00}, {0xE0, 0x80, 0x00},
@@ -82,18 +78,14 @@ void fill_palette(SDL_Color *palette) {
 void RecalcDestRect(SDL_Window *win) {
     int winW, winH;
     SDL_GetWindowSize(win, &winW, &winH);
-
     float windowAspect = (float)winW / (float)winH;
     float targetAspect = (float)SW / (float)SH;
-
     if (windowAspect > targetAspect) {
-        // window is too wide → pillarbox
         destRect.h = winH;
         destRect.w = (int)(winH * targetAspect);
         destRect.x = (winW - destRect.w) / 2;
         destRect.y = 0;
     } else {
-        // window is too tall → letterbox
         destRect.w = winW;
         destRect.h = (int)(winW / targetAspect);
         destRect.x = 0;
@@ -158,7 +150,7 @@ int main(int argc, char* argv[]) {
                 if (event.window.event == SDL_WINDOWEVENT_EXPOSED ||
                     event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
 
-                    surface = SDL_GetWindowSurface(window);  // <-- Refresh pointer!
+                    surface = SDL_GetWindowSurface(window);
                     SDL_BlitScaled(framebuffer, NULL, surface, &destRect);
                     SDL_UpdateWindowSurface(window);
                 }
@@ -218,7 +210,6 @@ int main(int argc, char* argv[]) {
         }
         SDL_BlitScaled(framebuffer, NULL, surface, &destRect);
         SDL_UpdateWindowSurface(window);
-        //memset(rgb565_surface->pixels, 0, sizeof(uint16_t)*SW*SH);
         double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
         time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
         fI++;
