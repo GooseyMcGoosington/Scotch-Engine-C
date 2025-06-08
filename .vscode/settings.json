@@ -93,6 +93,7 @@
     "fasttrig.h": "c",
     "stdalign.h": "c",
     "stb_image.h": "c",
-    "random": "c"
+    "random": "c",
+    "immintrin.h": "c"
   }
 }

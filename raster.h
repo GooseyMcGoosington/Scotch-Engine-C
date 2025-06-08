@@ -53,15 +53,13 @@ int pointWallCollision(float px, float py, float ax, float ay, float bx, float b
     }
 }
 
-void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds) {
+void R_drawSector(Uint8 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds, int doClip) {
     wall *walls = Sector->walls;
     size_t wallCount = Sector->count;
     
     float px = character.x;
     float py = character.y;
     float pz = character.z+character.h;
-    float wz0 = pz - Sector->height - Sector->elevation;
-    float wz1 = pz - Sector->elevation;
     
     float ez0 = (Sector->height +  Sector->elevation)-pz;
     float ez1 = Sector->elevation-pz;
@@ -69,10 +67,16 @@ void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character
     portalRender *portalQueue = NULL;
     int portalCount = 0;
 
+    float pitch = character.pitch; // 45 degrees; tan(45)
+    float shear = tanf(pitch);
+    float focalShear = character.focalLength * shear;
+
     tfile ceiling_texture = texture_list->files[Sector->cIndex];
     tfile floor_texture = texture_list->files[Sector->fIndex];
-
+    float wz0 = (pz - Sector->height - Sector->elevation);
+    float wz1 = (pz - Sector->elevation);
     for (int wallIndex=0;wallIndex<wallCount;wallIndex++) {
+
         wall cWall = walls[wallIndex];
         tfile wall_texture = texture_list->files[cWall.tIndex];
 
@@ -106,47 +110,49 @@ void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character
             //hasClipped = 2;
             t0 -= t/character.fovWidth;
         }
+
         float inv_ty0 = (1/ty0)*character.focalLength;
         float inv_ty1 = (1/ty1)*character.focalLength;
-        
+
         if (cWall.is_portal == 0) {
             float sx0 = tx0 * inv_ty0 + SW2;
             float sx1 = tx1 * inv_ty1 + SW2;
-            float sy0 = wz0 * inv_ty0 + SH2;
-            float sy1 = wz0 * inv_ty1 + SH2;
-            float sy2 = wz1 * inv_ty0 + SH2;
-            float sy3 = wz1 * inv_ty1 + SH2;
-            dispatch_wall(sx0, sx1, sy0, sy1, sy2, sy3, pixels, portalBounds, ceilingLut, floorLut, 0, wall_texture.pixels, t0, t1, ty0, ty1, cWall.length, Sector->height, wall_texture.scale);
+
+            // Screen Y using shear approx (constant focalShear)
+            float sy0 = wz0 * inv_ty0 + focalShear + SH2;
+            float sy1 = wz0 * inv_ty1 + focalShear + SH2;
+            float sy2 = wz1 * inv_ty0 + focalShear + SH2;
+            float sy3 = wz1 * inv_ty1 + focalShear + SH2;
+
+            dispatch_wall(sx0, sx1, sy0, sy1, sy2, sy3, pixels, portalBounds, ceilingLut, floorLut, 0, wall_texture.pixels, t0, t1, ty0, ty1, cWall.length, Sector->height, wall_texture.scale, doClip, Sector->light);
         } else {
             float pz1 = wz0 + Sector->height;
             float pz0 = pz1 - cWall.portal_bottom;
             float pz2 = wz0;
             float pz3 = pz2 + cWall.portal_top;
 
-            // Perspective
             float sx0 = tx0 * inv_ty0 + SW2;
-            float sy0 = pz0 * inv_ty0 + SH2;
-
             float sx1 = tx1 * inv_ty1 + SW2;
-            float sy1 = pz0 * inv_ty1 + SH2;
 
-            float sy2 = pz1 * inv_ty0 + SH2;
-            float sy3 = pz1 * inv_ty1 + SH2;
+            // apply shear approx for each portal Y
+            float sy0 = pz0 * inv_ty0 + focalShear + SH2;
+            float sy1 = pz0 * inv_ty1 + focalShear + SH2;
+            float sy2 = pz1 * inv_ty0 + focalShear + SH2;
+            float sy3 = pz1 * inv_ty1 + focalShear + SH2;
 
-            float sy4 = pz2 * inv_ty0 + SH2;
-            float sy5 = pz2 * inv_ty1 + SH2;
-
-            float sy6 = pz3 * inv_ty0 + SH2;
-            float sy7 = pz3 * inv_ty1 + SH2;
+            float sy4 = pz2 * inv_ty0 + focalShear + SH2;
+            float sy5 = pz2 * inv_ty1 + focalShear + SH2;
+            float sy6 = pz3 * inv_ty0 + focalShear + SH2;
+            float sy7 = pz3 * inv_ty1 + focalShear + SH2;
             
-            dispatch_wall(sx0, sx1, sy0, sy1, sy2, sy3, pixels, portalBounds, ceilingLut, floorLut, 2, wall_texture.pixels, t0, t1, ty0, ty1, cWall.length, cWall.portal_top, wall_texture.scale);
-            dispatch_wall(sx0, sx1, sy4, sy5, sy6, sy7, pixels, portalBounds, ceilingLut, floorLut, 1, wall_texture.pixels, t0, t1, ty0, ty1, cWall.length, cWall.portal_bottom, wall_texture.scale);
+            dispatch_wall(sx0, sx1, sy0, sy1, sy2, sy3, pixels, portalBounds, ceilingLut, floorLut, 2, wall_texture.pixels, t0, t1, ty0, ty1, cWall.length, cWall.portal_bottom, wall_texture.scale, doClip, Sector->light);
+            dispatch_wall(sx0, sx1, sy4, sy5, sy6, sy7, pixels, portalBounds, ceilingLut, floorLut, 1, wall_texture.pixels, t0, t1, ty0, ty1, cWall.length, cWall.portal_top, wall_texture.scale, doClip, Sector->light);
             
             portalRender *temp = realloc(portalQueue, (portalCount+1) * sizeof(portalRender));
             if (!temp) {
                 perror("Failed to realloc memory for portal queue");
                 free(portalQueue);
-                //exit(EXIT_FAILURE);
+                exit(EXIT_FAILURE);
             }
             portalQueue = temp;
             
@@ -156,34 +162,41 @@ void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character
             newPortal.uid = cWall.uid;
 
             float dxCull = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
-
             if (sx0 < portalBounds.x0) {
-                
                 float t = (portalBounds.x0-sx0)/dxCull;
                 sx0 = portalBounds.x0;
-
                 sy6 = (1-t)*sy6 + t*sy7;
                 sy0 = (1-t)*sy0 + t*sy1;
                 dxCull = sx1-sx0;
             } 
             if (sx1 > portalBounds.x1) {
-                
                 float t = (portalBounds.x1-sx0)/dxCull;
                 sx1 = portalBounds.x1;
-
                 sy7 = (1-t)*sy6 + t*sy7;
                 sy1 = (1-t)*sy0 + t*sy1;
                 dxCull = sx1-sx0;
             }
-
             portalCull newPortalBounds = {sx0, sx1, sy6, sy7, sy0, sy1, dxCull};
             newPortal.portalBounds = newPortalBounds;
             portalQueue[portalCount++] = newPortal;
         }
     }
-    dispatch_flat(pixels, ceilingLut, 1, portalBounds, ez0, character.fov, character.yaw, character.focalLength, character.x, character.y, ceiling_texture.pixels, ceiling_texture.scale);
-    dispatch_flat(pixels, floorLut, 2, portalBounds, ez1, character.fov, character.yaw, character.focalLength, character.x, character.y, floor_texture.pixels, floor_texture.scale);
-
+    dispatch_flat(pixels, ceilingLut, 1, portalBounds, ez0, character.fov, character.yaw, character.focalLength, character.x, character.y, ceiling_texture.pixels, ceiling_texture.scale, doClip, Sector->light, focalShear);
+    dispatch_flat(pixels, floorLut, 2, portalBounds, ez1, character.fov, character.yaw, character.focalLength, character.x, character.y, floor_texture.pixels, floor_texture.scale, doClip, Sector->light, focalShear);
+    for (int portalIndex=0; portalIndex<portalCount; portalIndex++) {
+        portalRender portalInfo = portalQueue[portalIndex];
+        if (portalInfo.sector_link == originSector) {
+            continue;
+        }
+        if (traversedPortals[portalInfo.uid] == 1) {
+            continue;
+        } else {
+            traversedPortals[portalInfo.uid] = 1;
+        }
+        sector *portalSector = level->sectors[portalInfo.sector_link];
+        //printf("Traversing into Sector %d\n", portalInfo.sector_link);
+        R_drawSector(pixels, level, portalSector, character, pSn, pCs, portalInfo.portalBounds, 0);
+    }
     for (int entityIndex=0; entityIndex <Sector->amnt_entities; entityIndex++) {
         entity *Entity = &Sector->entities[entityIndex];
 
@@ -197,11 +210,11 @@ void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character
         float inv_ty = (1/ty)*character.focalLength;
         float ez = Sector->elevation+Entity->h;
         float sx = tx * inv_ty + SW2;
-        float sy = (wz1-ez) * inv_ty + SH2;
+        float sy = (wz1-ez) * inv_ty + SH2 + focalShear;
 
         if (!Entity->animated) {
             tfile tex = texture_list->files[Entity->tid+Entity->a];
-            uint16_t *t_pixels = tex.pixels;
+            uint8_t *t_pixels = tex.pixels;
             R_RENDER_ENTITY(pixels, t_pixels, portalBounds, sx, sy, ty, character.focalLength, tex.width, tex.height);
         } else {
             if (Entity->a > 3) {
@@ -209,39 +222,28 @@ void R_drawSector(Uint16 *pixels, Level *level, sector *Sector, player character
             }
             tfile tex = texture_list->files[Entity->tid+Entity->a];
 
-            uint16_t *t_pixels = tex.pixels;
+            uint8_t *t_pixels = tex.pixels;
             if (tick) {
                 Entity->a ++;
             }
             R_RENDER_ENTITY(pixels, t_pixels, portalBounds, sx, sy, ty, character.focalLength, tex.width, tex.height);
         }
     }
-    for (int portalIndex=0; portalIndex<portalCount; portalIndex++) {
-        portalRender portalInfo = portalQueue[portalIndex];
-        if (portalInfo.sector_link == originSector) {
-            continue;
-        }
-        if (traversedPortals[portalInfo.uid] == 1) {
-            continue;
-        } else {
-            traversedPortals[portalInfo.uid] = 1;
-        }
-        sector *portalSector = level->sectors[portalInfo.sector_link];
-        R_drawSector(pixels, level, portalSector, character, pSn, pCs, portalInfo.portalBounds);
-    }
     free(portalQueue);
 }
 
-void R_startDrawSector(Uint16 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds, int origin) {
+void R_startDrawSector(Uint8 *pixels, Level *level, sector *Sector, player character, float pSn, float pCs, portalCull portalBounds, int origin) {
     originSector = origin;
     for (int x = 0; x<MAX_WALLS; x++) {
         traversedPortals[x] = 0;
     }
-    R_drawSector(pixels, level, Sector, character, pSn, pCs, portalBounds);
+    //printf("Camera starting from sector %d\n", originSector);
+    R_drawSector(pixels, level, Sector, character, pSn, pCs, portalBounds, 1);
+    //visualise_clipLine(pixels);
 }
 
 void R_INIT() {
-    ceilingLut = (int*)malloc(sizeof(int)*SW1);
-    floorLut = (int*)malloc(sizeof(int)*SW1);
+    ceilingLut = (int*)_aligned_malloc(sizeof(int)*SW1, 64);
+    floorLut = (int*)_aligned_malloc(sizeof(int)*SW1, 64);
 }
 #endif

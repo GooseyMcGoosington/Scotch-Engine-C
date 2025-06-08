@@ -5,9 +5,15 @@
 #include "helper.h"
 #include "SDL2/SDL.h"
 
+const static float SHADE_FLOAT = 0.0005f;
+const static float SHADE_FLAT_FLOAT = 0.36f;
+
+int topClipLine[1920];
+extern SDL_Color rgb_palette[256]; // The palette you set with SDL_SetPaletteColors
+
 static inline void draw_wall1920x1080x64(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -29,7 +35,7 @@ static inline void draw_wall1920x1080x64(float sx0, float sx1,
     const int TEXTURE_SHIFT = (1<<SHIFT);
     const float TEXTURE_DETAIL = (TEXTURE_SHIFT*wh);
     const unsigned int MASK = 0x3F;
-
+  
     for (int x = startX; x < endX; x++) {
         float t = (x - sx0) * invDx;
         float v = (1-t);
@@ -40,41 +46,62 @@ static inline void draw_wall1920x1080x64(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 1079);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 1079);
+        int16_t clampSY0 = clamp(yTop, 1, 1079);
+        int16_t clampSY1 = clamp(yBottom, 1, 1079);
         int row = clampSY0 * 1920 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;     
+        uint8_t *base = &w_pixels[U];
+
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 4096*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 1920;
         }
     }
 };
 
+void visualise_clipLine(uint16_t *pixels) {
+    for (int x = 1; x < SW1; x++) {
+        int y = topClipLine[x];
+        if (y > 1 && y < SW) {
+            pixels[y*SW+x] = RED;
+        }
+    }
+}
 static inline void draw_wall1920x1080x128(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -92,10 +119,10 @@ static inline void draw_wall1920x1080x128(float sx0, float sx1,
     float wz1 = wy1/z1;
     float wh = height/4;
 
-    const int SHIFT = 6;
+    const int SHIFT = 7;
     const int TEXTURE_SHIFT = (1<<SHIFT);
     const float TEXTURE_DETAIL = (TEXTURE_SHIFT*wh);
-    const unsigned int MASK = 0x3F;
+    const unsigned int MASK = 0x7F;
 
     for (int x = startX; x < endX; x++) {
         float t = (x - sx0) * invDx;
@@ -107,41 +134,53 @@ static inline void draw_wall1920x1080x128(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 1079);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 1079);
+        int16_t clampSY0 = clamp(yTop, 1, 1079);
+        int16_t clampSY1 = clamp(yBottom, 1, 1079);
         int row = clampSY0 * 1920 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 16384*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 1920;
         }
     }
 };
 
 static inline void draw_wall1024x768x64(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -174,41 +213,53 @@ static inline void draw_wall1024x768x64(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 767);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 767);
+        int16_t clampSY0 = clamp(yTop, 1, 767);
+        int16_t clampSY1 = clamp(yBottom, 1, 767);
         int row = clampSY0 * 1024 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 4096*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 1024;
         }
     }
 };
 
 static inline void draw_wall1024x768x128(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -229,7 +280,7 @@ static inline void draw_wall1024x768x128(float sx0, float sx1,
     const int SHIFT = 7;
     const int TEXTURE_SHIFT = (1<<SHIFT);
     const float TEXTURE_DETAIL = (TEXTURE_SHIFT*wh);
-    const unsigned int MASK = 0x3F;
+    const unsigned int MASK = 0x7F;
 
     for (int x = startX; x < endX; x++) {
         float t = (x - sx0) * invDx;
@@ -241,41 +292,53 @@ static inline void draw_wall1024x768x128(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 767);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 767);
+        int16_t clampSY0 = clamp(yTop, 1, 767);
+        int16_t clampSY1 = clamp(yBottom, 1, 767);
         int row = clampSY0 * 1024 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 16384*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 1024;
         }
     }
 };
 
 static inline void draw_wall800x600x64(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -308,41 +371,53 @@ static inline void draw_wall800x600x64(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 599);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 599);
+        int16_t clampSY0 = clamp(yTop, 1, 599);
+        int16_t clampSY1 = clamp(yBottom, 1, 599);
         int row = clampSY0 * 800 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 4096*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 800;
         }
     }
 };
 
 static inline void draw_wall800x600x128(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -363,7 +438,7 @@ static inline void draw_wall800x600x128(float sx0, float sx1,
     const int SHIFT = 7;
     const int TEXTURE_SHIFT = (1<<SHIFT);
     const float TEXTURE_DETAIL = (TEXTURE_SHIFT*wh);
-    const unsigned int MASK = 0x3F;
+    const unsigned int MASK = 0x7F;
 
     for (int x = startX; x < endX; x++) {
         float t = (x - sx0) * invDx;
@@ -375,41 +450,53 @@ static inline void draw_wall800x600x128(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 599);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 599);
+        int16_t clampSY0 = clamp(yTop, 1, 599);
+        int16_t clampSY1 = clamp(yBottom, 1, 599);
         int row = clampSY0 * 800 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 16384*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 800;
         }
     }
 };
 
 static inline void draw_wall640x480x64(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -442,41 +529,53 @@ static inline void draw_wall640x480x64(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 479);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 479);
+        int16_t clampSY0 = clamp(yTop, 1, 479);
+        int16_t clampSY1 = clamp(yBottom, 1, 479);
         int row = clampSY0 * 640 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 4096*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 640;
         }
     }
 };
 
 static inline void draw_wall640x480x128(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
 
     float dx = (sx1 > sx0) ? (sx1 - sx0) : 1.0f;
     int startX = clamp((int)sx0, portalBounds.x0, portalBounds.x1);
@@ -497,7 +596,7 @@ static inline void draw_wall640x480x128(float sx0, float sx1,
     const int SHIFT = 7;
     const int TEXTURE_SHIFT = (1<<SHIFT);
     const float TEXTURE_DETAIL = (TEXTURE_SHIFT*wh);
-    const unsigned int MASK = 0x3F;
+    const unsigned int MASK = 0x7F;
 
     for (int x = startX; x < endX; x++) {
         float t = (x - sx0) * invDx;
@@ -509,41 +608,53 @@ static inline void draw_wall640x480x128(float sx0, float sx1,
         int_fast16_t yBottom = (int)((1.0f - t) * sy2 + t * sy3);
         int_fast16_t tTop = yTop;
         int_fast16_t tBottom = yBottom;
+        if (!doClip) {
+            if (yTop < topClipLine[x]) {
+                yTop = topClipLine[x];
+            }
+        }
         int_fast16_t clampY0 = (int_fast16_t)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
         int_fast16_t clampY1 = (int_fast16_t)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
         int_fast16_t U = (int_fast16_t)(((1-v) * tLZ0 + v*tRZ1) / wS * TEXTURE_SHIFT) & MASK;
         yTop    = clamp(yTop, clampY0, clampY1);
         yBottom = clamp(yBottom, clampY0, clampY1);
-        int_fast16_t clampSY0 = clamp(yTop, 1, 479);
-        int_fast16_t clampSY1 = clamp(yBottom, 1, 479);
+        int16_t clampSY0 = clamp(yTop, 1, 479);
+        int16_t clampSY1 = clamp(yBottom, 1, 479);
         int row = clampSY0 * 640 + x;
         if (flat == 0) {
             ceilingLut[x] = clampSY0;
             floorLut[x] = clampSY1;
         } else if (flat == 1) {
+            if (doClip) {
+                topClipLine[x] = clampSY1;
+            }
             ceilingLut[x] = clampSY0;
         } else if (flat == 2) {
             floorLut[x] = clampSY1;
         }
         float dxY = (tBottom - tTop);
         float idxY = (1/dxY) * TEXTURE_DETAIL;
-        int_fast16_t shade = (int_fast16_t)(1.0f + dS * 0.0025f);        
-        uint16_t *base = &w_pixels[U];
+        int_fast16_t shade = (int_fast16_t)(dS * SHADE_FLOAT)-light;        
+        uint8_t *base = &w_pixels[U];
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
+        unsigned int offset = 16384*shade;
         for (int y = clampSY0; y < clampSY1; y++) {
             int_fast16_t V = (((int)((y - tTop) * idxY) & MASK) << SHIFT);
-            uint16_t baseColour = base[V];
-            uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-            uint8_t g = (((baseColour >> 5)  & 0x3F) >> shade);
-            uint8_t b = ((baseColour & 0x1F) >> shade);
-            pixels[row] = (r << 11) | (g << 5) | b;
+            uint8_t baseColour = base[V+offset];
+            pixels[row] = baseColour;
             row += 640;
         }
     }
 };
 
 static inline void dispatch_wall(float sx0, float sx1, 
-    float sy0, float sy1, float sy2, float sy3, Uint16 * restrict pixels, 
-    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint16_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale) {
+    float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
+    portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
     
     switch (resolutionSet) {
         case 0:
@@ -551,12 +662,13 @@ static inline void dispatch_wall(float sx0, float sx1,
             switch (tScale) {
                 case 0:
                 {
-                    draw_wall1920x1080x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall1920x1080x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
                     break;
                 }
                 case 1:
                 {
-                    draw_wall1920x1080x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall1920x1080x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
+                    break;
                 }
             }
             break;
@@ -566,12 +678,13 @@ static inline void dispatch_wall(float sx0, float sx1,
             switch (tScale) {
                 case 0:
                 {
-                    draw_wall1024x768x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall1024x768x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
                     break;
                 }
                 case 1:
                 {
-                    draw_wall1024x768x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall1024x768x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
+                    break;
                 }
             }
             break;
@@ -581,12 +694,13 @@ static inline void dispatch_wall(float sx0, float sx1,
             switch (tScale) {
                 case 0:
                 {
-                    draw_wall800x600x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall800x600x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
                     break;
                 }
                 case 1:
                 {
-                    draw_wall800x600x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall800x600x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
+                    break;
                 }
             }
             break;
@@ -596,12 +710,13 @@ static inline void dispatch_wall(float sx0, float sx1,
             switch (tScale) {
                 case 0:
                 {
-                    draw_wall640x480x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall640x480x64(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
                     break;
                 }
                 case 1:
                 {
-                    draw_wall640x480x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale);
+                    draw_wall640x480x128(sx0,sx1,sy0,sy1,sy2,sy3,pixels,portalBounds,ceilingLut,floorLut,flat,w_pixels,t0,t1,wy0,wy1,length,height, tScale, doClip, light);
+                    break;
                 }
             }
             break;
@@ -633,24 +748,32 @@ static float sinBetaArr[1920];
 static float invSinBetaArr[1920];
 static float sinAlphaArr[1920];
 static float cosAlphaArr[1920];
+static float distLUT[1080];
 static int clampY0Arr[1920];
 static int clampY1Arr[1920];
+static int shadeLUT[1920];
 
-static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
+static inline void draw_flat1920x1080(Uint8 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint8_t *restrict t_pixels, int doClip, int8_t light, int po) {
+    const int SW = 1920;
+    const int SW1 = 1919;
+    const int SW1f = 1919.0f;
+
+    const int SH = 1080;
     const int SH2 = 1080 / 2;
+
     const int TX_SHIFT = 3;  // 1 << 3 = 8
     const int TY_SHIFT = 6;  // 1 << 6 = 64
     const int TX_MASK = 0x3F;
     const int TY_MASK = 0x3F;
 
-    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 1919);
-    int X1 = clamp(clamp(1919, portalBounds.x0, portalBounds.x1), 1, 1919);
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, SW1);
+    int X1 = clamp(clamp(1919, portalBounds.x0, portalBounds.x1), 1, SW1);
 
     float radFOV = fov * PI / 180.0f;
     float halfRFOV = radFOV / 2.0f;
     float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
-    float radFOV_1919 = radFOV / 1919.0f;
+    float radFOV_1919 = radFOV / SW1f;
 
     // Precompute per-x values
     for (int x = X0; x < X1; x++) {
@@ -670,15 +793,27 @@ static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut
         cosAlphaArr[i] = fast_cos(alpha);
 
         clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        if (!doClip) {
+            if (clampY0Arr[i] < topClipLine[x]) {
+                clampY0Arr[i] = topClipLine[x];
+            }
+        }
         clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
-
     if (flat == 1) {
         // Precompute distLUT for R = abs(y - SH2)
-        static float distLUT[1080];
-        for (int y = 0; y < 1080; y++) {
-            int R = abs(y - SH2);
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
             distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+
+            int shade = (int)((distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
         }
 
         for (int x = X0; x < X1; x++) {
@@ -693,7 +828,8 @@ static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut
             int Y0 = clamp(1, clampY0, clampY1);
             int Y1 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 1920 + x;
+            int row = Y0 * SW + x;
+
             for (int y = Y0; y < Y1; y++) {
                 float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
@@ -705,20 +841,25 @@ static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 1920;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     } else if (flat == 2) {
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((-distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
+        }
         for (int x = X0; x < X1; x++) {
             int i = x - X0;
             float inv_sin_beta = invSinBetaArr[i];
@@ -728,14 +869,13 @@ static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut
             int clampY0 = clampY0Arr[i];
             int clampY1 = clampY1Arr[i];
 
-            int Y1 = clamp(1080 - 1, clampY0, clampY1);
+            int Y1 = clamp(SH1, clampY0, clampY1);
             int Y0 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 1920 + x;
+            int row = Y0 * SW + x;
+
             for (int y = Y0; y < Y1; y++) {
-                float R = (float)(y - SH2);
-                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
-                float straightDist = elevationFactor / R;
+                float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
 
                 float wx = cy - sin_alpha * d;
@@ -745,43 +885,42 @@ static inline void draw_flat1920x1080(Uint16 *restrict pixels, int *restrict lut
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 1920;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     }
 }
 
-static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
+static inline void draw_flat1024x768(Uint8 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint8_t *restrict t_pixels, int doClip, int8_t light, int po) {
+    const int SW = 1024;
+    const int SW1 = 1023;
+    const int SW1f = 1023.0f;
+    
+    const int SH = 768;
     const int SH2 = 768 / 2;
+
     const int TX_SHIFT = 3;  // 1 << 3 = 8
     const int TY_SHIFT = 6;  // 1 << 6 = 64
     const int TX_MASK = 0x3F;
     const int TY_MASK = 0x3F;
 
-    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 1023);
-    int X1 = clamp(clamp(1023, portalBounds.x0, portalBounds.x1), 1, 1023);
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, SW1);
+    int X1 = clamp(clamp(SW1, portalBounds.x0, portalBounds.x1), 1, SW1);
 
     float radFOV = fov * PI / 180.0f;
     float halfRFOV = radFOV / 2.0f;
     float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
-    float radFOV_1023 = radFOV / 1023.0f;
+    float radFOV_1919 = radFOV / SW1f;
 
     // Precompute per-x values
     for (int x = X0; x < X1; x++) {
         int i = x - X0;
         float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
-        float beta = ((float)x) * radFOV_1023 + halfRFOV;
+        float beta = ((float)x) * radFOV_1919 + halfRFOV;
         float alpha = radYaw + beta;
 
         float sin_beta = fast_sin(beta);
@@ -795,15 +934,27 @@ static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut,
         cosAlphaArr[i] = fast_cos(alpha);
 
         clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        if (!doClip) {
+            if (clampY0Arr[i] < topClipLine[x]) {
+                clampY0Arr[i] = topClipLine[x];
+            }
+        }
         clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
 
     if (flat == 1) {
         // Precompute distLUT for R = abs(y - SH2)
-        static float distLUT[768];
-        for (int y = 0; y < 768; y++) {
-            int R = abs(y - SH2);
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
             distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
         }
 
         for (int x = X0; x < X1; x++) {
@@ -818,7 +969,8 @@ static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut,
             int Y0 = clamp(1, clampY0, clampY1);
             int Y1 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 1024 + x;
+            int row = Y0 * SW + x;
+            
             for (int y = Y0; y < Y1; y++) {
                 float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
@@ -830,20 +982,25 @@ static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut,
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 1024;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     } else if (flat == 2) {
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((-distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
+        }
         for (int x = X0; x < X1; x++) {
             int i = x - X0;
             float inv_sin_beta = invSinBetaArr[i];
@@ -853,14 +1010,12 @@ static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut,
             int clampY0 = clampY0Arr[i];
             int clampY1 = clampY1Arr[i];
 
-            int Y1 = clamp(767, clampY0, clampY1);
+            int Y1 = clamp(SH1, clampY0, clampY1);
             int Y0 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 1024 + x;
+            int row = Y0 * SW + x;
             for (int y = Y0; y < Y1; y++) {
-                float R = (float)(y - SH2);
-                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
-                float straightDist = elevationFactor / R;
+                float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
 
                 float wx = cy - sin_alpha * d;
@@ -871,42 +1026,42 @@ static inline void draw_flat1024x768(Uint16 *restrict pixels, int *restrict lut,
 
                 int index = ty * (1 << TY_SHIFT) + tx;
 
-                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 1024;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     }
 }
 
-static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
+static inline void draw_flat800x600(Uint8 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint8_t *restrict t_pixels, int doClip, int8_t light, int po) {
+    const int SW = 800;
+    const int SW1 = 799;
+    const int SW1f = 799.0f;
+    
+    const int SH = 600;
     const int SH2 = 600 / 2;
+
     const int TX_SHIFT = 3;  // 1 << 3 = 8
     const int TY_SHIFT = 6;  // 1 << 6 = 64
     const int TX_MASK = 0x3F;
     const int TY_MASK = 0x3F;
 
-    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 799);
-    int X1 = clamp(clamp(799, portalBounds.x0, portalBounds.x1), 1, 799);
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, SW1);
+    int X1 = clamp(clamp(SW1, portalBounds.x0, portalBounds.x1), 1, SW1);
 
     float radFOV = fov * PI / 180.0f;
     float halfRFOV = radFOV / 2.0f;
     float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
-    float radFOV_799 = radFOV / 799.0f;
+    float radFOV_1919 = radFOV / SW1f;
 
     // Precompute per-x values
     for (int x = X0; x < X1; x++) {
         int i = x - X0;
         float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
-        float beta = ((float)x) * radFOV_799 + halfRFOV;
+        float beta = ((float)x) * radFOV_1919 + halfRFOV;
         float alpha = radYaw + beta;
 
         float sin_beta = fast_sin(beta);
@@ -920,15 +1075,27 @@ static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, 
         cosAlphaArr[i] = fast_cos(alpha);
 
         clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        if (!doClip) {
+            if (clampY0Arr[i] < topClipLine[x]) {
+                clampY0Arr[i] = topClipLine[x];
+            }
+        }
         clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
 
     if (flat == 1) {
         // Precompute distLUT for R = abs(y - SH2)
-        static float distLUT[600];
-        for (int y = 0; y < 600; y++) {
-            int R = abs(y - SH2);
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
             distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
         }
 
         for (int x = X0; x < X1; x++) {
@@ -943,7 +1110,8 @@ static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, 
             int Y0 = clamp(1, clampY0, clampY1);
             int Y1 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 800 + x;
+            int row = Y0 * SW + x;
+            
             for (int y = Y0; y < Y1; y++) {
                 float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
@@ -955,20 +1123,25 @@ static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, 
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 800;
+                int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     } else if (flat == 2) {
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((-distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
+        }
         for (int x = X0; x < X1; x++) {
             int i = x - X0;
             float inv_sin_beta = invSinBetaArr[i];
@@ -978,14 +1151,12 @@ static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, 
             int clampY0 = clampY0Arr[i];
             int clampY1 = clampY1Arr[i];
 
-            int Y1 = clamp(600 - 1, clampY0, clampY1);
+            int Y1 = clamp(SH1, clampY0, clampY1);
             int Y0 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 800 + x;
+            int row = Y0 * SW + x;
             for (int y = Y0; y < Y1; y++) {
-                float R = (float)(y - SH2);
-                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
-                float straightDist = elevationFactor / R;
+                float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
 
                 float wx = cy - sin_alpha * d;
@@ -995,43 +1166,42 @@ static inline void draw_flat800x600(Uint16 *restrict pixels, int *restrict lut, 
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 800;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     }
 }
 
-static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels) {
+static inline void draw_flat640x480(Uint8 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint8_t *restrict t_pixels, int doClip, int8_t light, int po) {
+    const int SW = 640;
+    const int SW1 = 639;
+    const int SW1f = 639.0f;
+    
+    const int SH = 480;
     const int SH2 = 480 / 2;
+
     const int TX_SHIFT = 3;  // 1 << 3 = 8
     const int TY_SHIFT = 6;  // 1 << 6 = 64
     const int TX_MASK = 0x3F;
     const int TY_MASK = 0x3F;
 
-    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, 639);
-    int X1 = clamp(clamp(639, portalBounds.x0, portalBounds.x1), 1, 639);
+    int X0 = clamp(clamp(0, portalBounds.x0, portalBounds.x1), 1, SW1);
+    int X1 = clamp(clamp(SW1, portalBounds.x0, portalBounds.x1), 1, SW1);
 
     float radFOV = fov * PI / 180.0f;
     float halfRFOV = radFOV / 2.0f;
     float radYaw = ((int)yaw) * PI / 180.0f;
     float elevationFactor = elevation * f;
-    float radFOV_639 = radFOV / 639.0f;
+    float radFOV_1919 = radFOV / SW1f;
 
     // Precompute per-x values
     for (int x = X0; x < X1; x++) {
         int i = x - X0;
         float st = (float)(x - portalBounds.x0) / portalBounds.dxCull;
-        float beta = ((float)x) * radFOV_639 + halfRFOV;
+        float beta = ((float)x) * radFOV_1919 + halfRFOV;
         float alpha = radYaw + beta;
 
         float sin_beta = fast_sin(beta);
@@ -1045,15 +1215,27 @@ static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, 
         cosAlphaArr[i] = fast_cos(alpha);
 
         clampY0Arr[i] = (int)((1.0f - st) * portalBounds.y0 + st * portalBounds.y1);
+        if (!doClip) {
+            if (clampY0Arr[i] < topClipLine[x]) {
+                clampY0Arr[i] = topClipLine[x];
+            }
+        }
         clampY1Arr[i] = (int)((1.0f - st) * portalBounds.y2 + st * portalBounds.y3);
     }
 
     if (flat == 1) {
         // Precompute distLUT for R = abs(y - SH2)
-        static float distLUT[480];
-        for (int y = 0; y < 480; y++) {
-            int R = abs(y - SH2);
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
             distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
         }
 
         for (int x = X0; x < X1; x++) {
@@ -1068,7 +1250,8 @@ static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, 
             int Y0 = clamp(1, clampY0, clampY1);
             int Y1 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 640 + x;
+            int row = Y0 * SW + x;
+            
             for (int y = Y0; y < Y1; y++) {
                 float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
@@ -1080,20 +1263,25 @@ static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, 
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = ((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 640;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     } else if (flat == 2) {
+        for (int y = 0; y < SH; y++) {
+            int R = abs(y - SH2 - po);
+            distLUT[y] = (R != 0) ? elevationFactor / (float)R : 0.0f;
+            int shade = (int)((-distLUT[y] * SHADE_FLAT_FLOAT * (1 << TY_SHIFT)) / f)-light;
+            if (shade < 0) {
+                shade = 0;
+            }
+            if (shade > 3) {
+                shade = 3;
+            }
+            shadeLUT[y] = shade*4096;
+        }
         for (int x = X0; x < X1; x++) {
             int i = x - X0;
             float inv_sin_beta = invSinBetaArr[i];
@@ -1103,14 +1291,12 @@ static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, 
             int clampY0 = clampY0Arr[i];
             int clampY1 = clampY1Arr[i];
 
-            int Y1 = clamp(480 - 1, clampY0, clampY1);
+            int Y1 = clamp(SH1, clampY0, clampY1);
             int Y0 = clamp(lut[x], clampY0, clampY1);
 
-            int row = Y0 * 640 + x;
+            int row = Y0 * SW + x;
             for (int y = Y0; y < Y1; y++) {
-                float R = (float)(y - SH2);
-                if (fabsf(R) < 1e-6f) R = 1e-6f; // Avoid div zero
-                float straightDist = elevationFactor / R;
+                float straightDist = distLUT[y];
                 float d = straightDist * inv_sin_beta;
 
                 float wx = cy - sin_alpha * d;
@@ -1120,55 +1306,49 @@ static inline void draw_flat640x480(Uint16 *restrict pixels, int *restrict lut, 
                 int ty = ((int)(wy * (1 << TX_SHIFT))) & TY_MASK;
 
                 int index = ty * (1 << TY_SHIFT) + tx;
-
-                int dS = abs((int)(straightDist * (1 << TY_SHIFT))) / f;
-                int shade = 1 + dS;
-
-                uint16_t baseColour = t_pixels[index];
-                uint8_t r = (((baseColour >> 11) & 0x1F) >> shade);
-                uint8_t g = (((baseColour >> 5) & 0x3F) >> shade);
-                uint8_t b = ((baseColour & 0x1F) >> shade);
-
-                pixels[row] = (r << 11) | (g << 5) | b;
-                row += 640;
+                unsigned int shade = shadeLUT[y];
+                uint8_t baseColour = t_pixels[index+shade];
+                pixels[row] = baseColour;
+                row += SW;
             }
         }
     }
 }
 
-static inline void dispatch_flat(Uint16 *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint16_t *restrict t_pixels, int scale) {
+static inline void dispatch_flat(uint8_t *restrict pixels, int *restrict lut, int flat, portalCull portalBounds, float elevation, float fov, float yaw, float f, float cx, float cy, uint8_t *restrict t_pixels, int scale, int doClip, int8_t light, int po) {
     switch (resolutionSet) {
         case 0:
         {
-            draw_flat1920x1080(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels);
+            draw_flat1920x1080(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels, doClip, light, po);
             break;
         }
         case 1:
         {
-            draw_flat1024x768(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels);
+            draw_flat1024x768(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels, doClip, light, po);
             break;
         }
         case 2:
         {
-            draw_flat800x600(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels);
+            draw_flat800x600(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels, doClip, light, po);
             break;
         }
         case 3:
         {
-            draw_flat640x480(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels);
+            draw_flat640x480(pixels, lut, flat, portalBounds, elevation, fov, yaw, f, cx, cy, t_pixels, doClip, light, po);
             break;
         }
     }
 }
 
-static inline void R_RENDER_ENTITY(Uint16 *restrict pixels, uint16_t *restrict t_pixels, portalCull portalBounds, int16_t x, int16_t y, float ty, float f, int W, int H) {
+static inline void R_RENDER_ENTITY(Uint8 *restrict pixels, uint8_t *restrict t_pixels, portalCull portalBounds, int16_t x, int16_t y, float ty, float f, int W, int H) {
     if (ty <= 0.01f || portalBounds.dxCull <= 0.0001f) return;
     
-    const float scaleX = (float)(W*64) / ty; // 64*64 = 4096
+    const float calib = 1920/SW; // Properly scales the entity sprite for any resolution, hopefully
+    const float scaleX = (float)(W*64) / ty / calib; // 64*64 = 4096
     const int tScaleX = (int)scaleX;
     const int tHalfX = tScaleX >> 1;
 
-    const float scaleY = (float)(H*64) / ty; // 64*64 = 4096
+    const float scaleY = (float)(H*64) / ty / calib; // 64*64 = 4096
     const int tScaleY = (int)scaleY;
     const int tHalfY = tScaleY >> 1;
 
@@ -1187,6 +1367,11 @@ static inline void R_RENDER_ENTITY(Uint16 *restrict pixels, uint16_t *restrict t
     const float inv_w = 1.0f / (float)(uex - usx);
     const float inv_h = 1.0f / (float)(uey - usy);
 
+    if ((ex-sx) <= 1) {
+        return;
+    }
+    const unsigned int offset = tex_w*tex_h;
+
     for (int px = sx; px < ex; ++px) {
         float st = (px - portalBounds.x0) * inv_dx;
         if (st < 0.0f || st > 1.0f) continue;
@@ -1199,28 +1384,29 @@ static inline void R_RENDER_ENTITY(Uint16 *restrict pixels, uint16_t *restrict t
         sy = clamp(sy, 1, SH1);
         ey = clamp(ey, 1, SH1);
 
-        if (ey <= sy) continue;
-
         float v = (float)(px - usx) * inv_w;
         int tpx = (int)(v * tex_w);
-        if ((unsigned)tpx >= tex_w) continue;
-
+        unsigned int shade = (((int)ty)<<4)/f;
+        if (shade < 0) {
+            shade = 0;
+        }
+        if (shade > 3) {
+            shade = 3;
+        }
         for (int py = sy; py < ey; ++py) {
             float u = (float)(py - usy) * inv_h;
             int tpy = (int)(u * tex_h);
-            if ((unsigned)tpy >= tex_h) continue;
 
-            int tex_idx = tpy * tex_w + tpx;
-            uint16_t color = t_pixels[tex_idx];
+            int tex_idx = tpy * tex_w + tpx + (shade*offset);
+            uint8_t color = t_pixels[tex_idx];
             if (!color) continue;
-
             pixels[py * SW + px] = color;
         }
     }
 }
 
-
-
-
+//void R_SET() {
+    //topClipLine = (int*)malloc(sizeof(int)*SW);
+//}
 
 #endif
