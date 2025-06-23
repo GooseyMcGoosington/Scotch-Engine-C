@@ -18,7 +18,6 @@
 
 #define MOUSE_SENSITIVITY_Y 0.001f
 #define MOUSE_SENSITIVITY_X 0.08f
-
 #define MAX_CAMERA_PITCH (PI/2 - 0.01f)
 
 static int SW  = 1920;
@@ -28,11 +27,17 @@ static int SH1 = 1079;
 static int SW2 = 960;
 static int SH2 = 540;
 
-#define MAX_WALLS 256
+#define MAX_WALLS 512
 #define MAX_TEXTURES 255
 #define MAX_TEXTURESIZE (128 * 128)
+#define MAX_ENTITIES 255
+#define MAX_SECTORS 255
 
 inline int clamp(int val, int minVal, int maxVal) {
+    return val < minVal ? minVal : (val > maxVal ? maxVal : val);
+}
+
+inline float clampf(float val, float minVal, float maxVal) {
     return val < minVal ? minVal : (val > maxVal ? maxVal : val);
 }
 
@@ -40,17 +45,14 @@ inline _Float16 CLAMP_F16(_Float16 val, _Float16 minVal, _Float16 maxVal) {
     return val < minVal ? minVal : (val > maxVal ? maxVal : val);
 }
 
-
 inline float fast_sqrtf(float x) {
     if (x == 0.0f) return 0.0f;
-
     union {
         float f;
         uint32_t i;
     } u;
-
     u.f = x;
-    u.i = (u.i >> 1) + 0x1FC00000;  // Magic number for sqrt approximation
+    u.i = (u.i >> 1) + 0x1FC00000;
     return u.f;
 }
 
@@ -66,6 +68,8 @@ const int resolutions[10] = {
 };
 
 static int resolutionSet = 0;
+static int resPos = 0;
+
 static int tick = 0;
 
 static inline void CFG_Init(int x) {
@@ -81,6 +85,8 @@ static inline void CFG_Init(int x) {
     SH1 = _SH-1;
     SW2 = _SW/2;
     SH2 = _SH/2;
+
+    resPos = resolutionSet;
 };
 
 #endif

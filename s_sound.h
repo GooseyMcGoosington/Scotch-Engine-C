@@ -1,0 +1,1 @@
+extern inline void S_SOUND_PLAY_MONO(char *F_NAME);

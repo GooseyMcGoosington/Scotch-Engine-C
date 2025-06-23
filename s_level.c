@@ -4,7 +4,6 @@
 #include "classes.h"
 #include "helper.h"
 #include "SDL2/SDL.h"
-#include "raster.h"
 
 #include <stdio.h>
 #include <sys/time.h>
@@ -13,6 +12,10 @@
 #include <math.h>
 
 Level *level = NULL;
+
+int amnt_entities = 0;
+entity entities[(MAX_ENTITIES)];
+
 sector_listeners *ScriptedSectors = NULL;
 
 static inline int S_CHAR_IN_CONVEX_BOUNDS(player character) {
@@ -74,6 +77,8 @@ void S_SECTOR_CENTROID_APPROX(sector *s, float *out_x, float *out_y) {
     *out_y = sumY / count;
 }
 
+extern int amnt_entities;
+extern entity entities[];
 
 static void S_LOAD_LEVEL() {
     // Later, we should load from a file. For now, we will set the level below with some neat stuff.
@@ -93,25 +98,29 @@ static void S_LOAD_LEVEL() {
     sect->walls[3] = (wall){80, 80, 80, 0, 0, 0, 0, 0, 0, 0, 4, 0};
     sect->walls[4] = (wall){0, 80, 80, 80, 0, 0, 0, 0, 0, 0, 5, 0};
     sect->walls[5] = (wall){60, 20, 0, 0, 1, 2, 2, 1, 0, 0, 6, 0}; // Portal into Sector 1
-    sect->amnt_entities = 3;
-    sect->light = 0;
-    sect->entities = malloc(sect->amnt_entities*sizeof(entity));
-    sect->entities[0] = (entity){1, 10, 10, 0, 0, 10, 3, 2, 1, 0};
-    sect->entities[1] = (entity){1, 10, 15, 0, 0, 10, 3, 6, 0, 0};
-    sect->entities[2] = (entity){1, 10, 20, 0, 0, 10, 3, 8, 0, 0};
+    sect->id = 0;
+    sect->light = 0;    
+    
+    entities[0] = (entity){1, 10, 10, 0, 0, 10, .5, 2, 1, 0};
+    entities[1] = (entity){1, 10, 10, 0, 0, 10, .5, 6, 0, 0};
+    amnt_entities = 2;
+
+    //entities[1] = (entity){1, 10, 15, 0, 0, 10, 3, 6, 0, 0};
+    //entities[2] = (entity){1, 10, 20, 0, 0, 10, 3, 8, 0, 0};
 
 
     level->sectors[1] = malloc(sizeof(sector) + 4 * sizeof(wall));
     sector *sect1 = level->sectors[1];
-    sect1->amnt_entities = 1;
-    sect1->entities = malloc(sect1->amnt_entities*sizeof(entity));
-    sect1->entities[0] = (entity){1, 15, -8, 0, 0, 10, 0, 2, 1, 0};
+    //sect1->amnt_entities = 1;
+    //sect1->entities = malloc(sect1->amnt_entities*sizeof(entity));
+    //sect1->entities[0] = (entity){1, 15, -8, 0, 0, 10, 0, 2, 1, 0};
     sect1->count = 4;
     sect1->height = 18.0;
     sect1->elevation = 2.0;
     sect1->cIndex = 0;
     sect1->fIndex = 0;
     sect1->light = 2;
+    sect1->id = 1;
     sect1->walls[0] = (wall){80, 20, -30, -30, 1, 0, 0, 2, 0, 1, 7, 1};
     sect1->walls[1] = (wall){20, 20, -30, 0, 0, 0, 0, 0, 0, 1, 8, 1};
     sect1->walls[2] = (wall){60, 80, 0, -30, 0, 0, 0, 0, 0, 1, 9, 1};
@@ -125,8 +134,9 @@ static void S_LOAD_LEVEL() {
     sect2->cIndex = 1;
     sect2->fIndex = 1;
     sect2->light = -5;
-    sect2->entities = NULL;
-    sect2->amnt_entities = 0;
+    sect2->id = 2;
+    //sect2->entities = NULL;
+    //sect2->amnt_entities = 0;
     sect2->walls[0] = (wall){100, 20, -70, -70, 0, 0, 0, 0, 0, 0, 11, 2};
     sect2->walls[1] = (wall){20, 20, -70, -30, 0, 0, 0, 0, 0, 0, 12, 2};
     sect2->walls[2] = (wall){100, 100, -30, -70, 0, 0, 0, 0, 0, 0, 13, 2};

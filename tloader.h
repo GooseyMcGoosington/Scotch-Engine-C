@@ -13,7 +13,7 @@
 
 tlut *texture_list = NULL;
 
-extern SDL_Color rgb_palette[256]; // The palette you set with SDL_SetPaletteColors
+extern SDL_Color rgb_palette[256];
 
 static inline int color_dist_sq(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) {
     int dr = r1 - r2;
@@ -25,22 +25,8 @@ static inline int color_dist_sq(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, 
 tfile load_texture(char *filename, int scale) {
     int width, height, channels;
     unsigned char *image = stbi_load(filename, &width, &height, &channels, 0);
-
-    if (!image) {
-        printf("Error loading texture: %s\n", filename);
-        tfile empty = {NULL, 0, 0};
-        return empty;
-    }
-
     int numPixels = width * height;
     uint8_t *indexed_pixels = malloc(numPixels * 4 * sizeof(uint8_t));
-    if (!indexed_pixels) {
-        printf("Failed to allocate memory for indexed pixels\n");
-        stbi_image_free(image);
-        tfile empty = {NULL, 0, 0};
-        return empty;
-    }
-
     for (int i = 0; i < numPixels; i++) {
         int idx = i * channels;
         uint8_t r = image[idx];
@@ -83,12 +69,11 @@ void init_textures() {
     texture_list->files[3] = load_texture("textures/mega2.png", 0);
     texture_list->files[4] = load_texture("textures/mega3.png", 0);
     texture_list->files[5] = load_texture("textures/mega4.png", 0);
-    texture_list->files[6] = load_texture("textures/shotgun.png", 0);
+    texture_list->files[6] = load_texture("textures/medkit.png", 0);
     texture_list->files[7] = load_texture("textures/keycardred.png", 0);
     texture_list->files[8] = load_texture("textures/enemy.png", 0);
-    //if (texture_list->files[0].pixels != NULL) {
-    //    printf("Loaded texture, first pixel value: %x\n", texture_list->files[0].pixels[0]);
-    //}
+    texture_list->files[9] = load_texture("textures/tile106.png", 0);
+    texture_list->files[10] = load_texture("textures/dust.png", 0);
 }
 
 void free_textures() {

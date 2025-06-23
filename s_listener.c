@@ -17,7 +17,7 @@ static inline void S_SET_HEIGHT(Level *level, listener *currentListener) {
     float h0 = Sector->height;
 
     for (int o = 0; o < currentListener->otherSize; o++) {
-        wall *Wall = currentListener->otherWalls[o]; // This, obviously, is beside our scripted sector.
+        wall *Wall = currentListener->otherWalls[o]; // This is beside our scripted sector.
         if (Wall->is_portal) {
             float e1 = level->sectors[Wall->oid]->elevation;
             float h1 = level->sectors[Wall->oid]->height;
@@ -90,7 +90,6 @@ static inline void S_HANDLE_EVENT(Level *level, listener *currentListener) {
 }
 
 void S_START_LISTEN(Level *level, sector_listeners *Listeners) {
-    //printf("%s\n", "Listening");
     for (int index = 0; index < Listeners->size; index++) {
         listener *currentListener = Listeners->listeners;
         S_HANDLE_EVENT(level, currentListener);

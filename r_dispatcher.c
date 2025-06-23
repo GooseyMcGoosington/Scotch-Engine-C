@@ -9,7 +9,7 @@ const static float SHADE_FLOAT = 0.0005f;
 const static float SHADE_FLAT_FLOAT = 0.36f;
 
 int topClipLine[1920];
-extern SDL_Color rgb_palette[256]; // The palette you set with SDL_SetPaletteColors
+extern SDL_Color rgb_palette[256];
 
 static inline void draw_wall1920x1080x64(float sx0, float sx1, 
     float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
@@ -1402,9 +1402,5 @@ static inline void R_RENDER_ENTITY(Uint8 *restrict pixels, uint8_t *restrict t_p
         }
     }
 }
-
-//void R_SET() {
-    //topClipLine = (int*)malloc(sizeof(int)*SW);
-//}
 
 #endif

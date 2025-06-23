@@ -94,6 +94,20 @@
     "stdalign.h": "c",
     "stb_image.h": "c",
     "random": "c",
-    "immintrin.h": "c"
+    "immintrin.h": "c",
+    "raster.h": "c",
+    "g_gui.h": "c",
+    "*.rh": "c",
+    "sdl_mixer.h": "c",
+    "array": "c",
+    "deque": "c",
+    "string": "c",
+    "unordered_map": "c",
+    "vector": "c",
+    "string_view": "c",
+    "format": "c",
+    "initializer_list": "c",
+    "span": "c",
+    "text_encoding": "c"
   }
 }

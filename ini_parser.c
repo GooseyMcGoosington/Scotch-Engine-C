@@ -71,4 +71,48 @@ void INI_PARSE(const char* filename) { // File must be within the main folder an
     fclose(f);
 }
 
+void INI_WRITE(const char* filename, const char* tgtkey, const char* tgtvalue) {
+    FILE *fin = fopen(filename, "r");
+
+    FILE *fout = fopen("TEMP_WRITE.ini", "w");
+    char line[256];
+
+    while (fgets(line, sizeof(line), fin)) {
+        char original_line[256];
+        strcpy(original_line, line);
+
+        char *p = line;
+        while (*p == ' ' || *p == '\t') ++p;
+
+        if (*p == '#' || *p == ';' || *p == '\n') {
+            fputs(original_line, fout);
+            continue;
+        }
+
+        if (*p == '[') {
+            fputs(original_line, fout);
+            continue;
+        }
+
+        char* equal = strchr(p, '=');
+        if (equal) {
+            *equal = 0;
+            char* key = p;
+            if (strcmp(key, tgtkey) == 0) {
+                fprintf(fout, "%s=%s\n", tgtkey, tgtvalue);
+                continue;
+            }
+        }
+
+        fputs(original_line, fout);
+    }
+
+    fclose(fin);
+    fclose(fout);
+
+    remove(filename);
+    rename("TEMP_WRITE.ini", filename);
+}
+
+
 #endif
