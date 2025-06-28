@@ -1,6 +1,7 @@
 #include "classes.h"
 #include "helper.h"
 #include "SDL2/SDL.h"
+#include "SDL2/SDL_mixer.h"
 #include "raster.c"
 // include stuff for the game
 #include "s_listener.c"
@@ -11,7 +12,7 @@
 #include "p_keyboard.c"
 #include "p_character.c"
 
-#include "g_gui.c"
+//#include "g_gui.c" This little piggy ate my fucking FPS!
 #include "ini_parser.c"
 
 #include <stdio.h> 
@@ -131,10 +132,13 @@ int main(int argc, char* argv[]) {
     P_KEYBOARD_INIT();
     P_CHARACTER_INIT(20.0, 0.0, 0.0, 90.0, 3.0);
     init_textures();
-    G_GUI_INIT();
+    //G_GUI_INIT();
     
     while (!quit) {
-        G_GUI_UPDATE_HUD((Uint8*)framebuffer->pixels);
+        struct timeval begin, end;
+        gettimeofday(&begin, NULL);
+        //memset(framebuffer->pixels, 0, framebuffer->pitch*framebuffer->h);
+        //G_GUI_UPDATE_HUD((Uint8*)framebuffer->pixels);
         P_KEYBOARD_UPDATE();
         int yaw = character.yaw;
         float pSn = sn[yaw];
@@ -147,28 +151,44 @@ int main(int argc, char* argv[]) {
         int inside = P_CHARACTER_UPDATE_SECTOR(&cS);
 
         if (inside) {
+            playerSector = level->sectors[cS];
             // Logic Updates
             S_START_LISTEN(level, ScriptedSectors);
-            S_SEGMENT_COLLISION_CHR(playerSector, &character);
+            S_SEGMENT_COLLISION_CHR(playerSector, &character, 1);
             S_HANDLE_AI(level);
             S_SOUND_UPDATE(character, pCs, pSn);
             // Rasterise Sectors First
             R_startDrawSector((Uint8 *)framebuffer->pixels, level, playerSector, character, pSn, pCs, portalBounds, cS);
-            // Rasterise Entities Last
+            //Rasterise Entities Last
             R_DRAW_ENTITIES((Uint8*)framebuffer->pixels, level, character, pCs, pSn);
             gettimeofday(&end, NULL);
         } else {
             playerSector = NULL;
         }
         // Render to Screen
-        G_GUI_BLIT(framebuffer, &destRect);
+        //G_GUI_BLIT(framebuffer, &destRect);
         SDL_BlitScaled(framebuffer, NULL, surface, &destRect);
         SDL_UpdateWindowSurface(window);
         // Tick Engine
+        double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
+        fI++;
+        fAvg += time_spent;
+
+        if (fI == 30) {
+            if (fAvg > 0) {
+                double fps = 30.0 / fAvg; // since 30 frames over total time
+                char str[20];
+                sprintf(str, "%.2f FPS", fps);
+                SDL_SetWindowTitle(window, str);
+            }
+            fI = 0;
+            fAvg = 0;
+        }
+        timer++;
         tick = (timer % 7 == 0) ? 1 : 0;
-        SDL_Delay(30);
+        SDL_Delay(15);
     }
-    G_GUI_QUIT();
+    //G_GUI_QUIT();
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;

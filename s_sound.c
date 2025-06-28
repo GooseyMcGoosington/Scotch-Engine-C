@@ -3,8 +3,6 @@
 
 #include "classes.h"
 #include "helper.h"
-#include "SDL2/SDL.h"
-#include "SDL2/SDL_mixer.h"
 #include <stdio.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -14,12 +12,13 @@
 
 /*
 This is the sound driver using SDL2's mixer.
-It will be able to support panning, and eventually reverb.
+This supports panning and volume attenuation!
+Whatever you do, do NOT load 30MB sound files like I did once - it will balloon up to 4GB or more of memory usage.
 */
 
 #define S_SOUND_CHANNELS_MAX 64
 #define S_SOUND_RESERVED_CHANNELS 3
-#define S_SOUND_WAV_MAX 4
+#define S_SOUND_WAV_MAX 3
 #define S_SOUND_DIR "sounds\\*.*"
 
 float S_SOUND_SIN = 0;

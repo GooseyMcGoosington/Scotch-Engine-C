@@ -9,7 +9,7 @@ const static float SHADE_FLOAT = 0.0005f;
 const static float SHADE_FLAT_FLOAT = 0.36f;
 
 int topClipLine[1920];
-extern SDL_Color rgb_palette[256];
+extern SDL_Color rgb_palette[256]; // The palette you set with SDL_SetPaletteColors
 
 static inline void draw_wall1920x1080x64(float sx0, float sx1, 
     float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
@@ -91,14 +91,6 @@ static inline void draw_wall1920x1080x64(float sx0, float sx1,
     }
 };
 
-void visualise_clipLine(uint16_t *pixels) {
-    for (int x = 1; x < SW1; x++) {
-        int y = topClipLine[x];
-        if (y > 1 && y < SW) {
-            pixels[y*SW+x] = RED;
-        }
-    }
-}
 static inline void draw_wall1920x1080x128(float sx0, float sx1, 
     float sy0, float sy1, float sy2, float sy3, Uint8 * restrict pixels, 
     portalCull portalBounds, int * restrict ceilingLut, int * restrict floorLut, int flat, uint8_t * restrict w_pixels, float t0, float t1, float wy0, float wy1, float length, float height, int tScale, int doClip, int8_t light) {
@@ -724,15 +716,17 @@ static inline void dispatch_wall(float sx0, float sx1,
     }
 }
 
-#define INV_TWO_PI (0.1591549430918953358f)
+#define TWO_PI (2.0f * PI)
+#define INV_TWO_PI (0.1591549430918953358f)  // 1/(2π)
 
+// This should instead, later on, invert the output or something.
 const float B =  1.27323954473516268f;
 const float C = -0.40528473456935109f;
 static inline __attribute__((always_inline))
 float fast_sin(float x) {
     float t = x * INV_TWO_PI + (x >= 0 ? 0.5f : -0.5f);
     int   k = (int)t; 
-    x = x - (float)k * PI2;
+    x = x - (float)k * TWO_PI;
     float ax = fabsf(x);
     return (B * x) + (C * x * ax);
 }
@@ -1402,5 +1396,9 @@ static inline void R_RENDER_ENTITY(Uint8 *restrict pixels, uint8_t *restrict t_p
         }
     }
 }
+
+//void R_SET() {
+    //topClipLine = (int*)malloc(sizeof(int)*SW);
+//}
 
 #endif

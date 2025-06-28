@@ -16,6 +16,10 @@ int originSector = 0;
 
 cull cullBounds[MAX_SECTORS] = {{-1}};
 
+static inline float lerp_alt(float a, float b, float t) {
+    return a + (b - a) * t;
+}
+
 static inline float lerp(float a, float b, float t) {
     return (1 - a) * b + a * t;
 }
@@ -251,38 +255,6 @@ void R_drawSector(Uint8 *pixels, Level *level, sector *Sector, player character,
 
         R_drawSector(pixels, level, portalSector, character, pSn, pCs, portalInfo.portalBounds, 0);
     }
-    /*for (int entityIndex=0; entityIndex <Sector->amnt_entities; entityIndex++) {
-        entity *Entity = &Sector->entities[entityIndex];
-
-        float rx = Entity->x - px;
-        float ry = Entity->y - py;
-        float tx = rx * pCs - ry * pSn;
-        float ty = ry * pCs + rx * pSn;
-        if (ty < 1) {
-            continue;
-        }
-        float inv_ty = (1/ty)*character.focalLength;
-        float ez = Sector->elevation+Entity->h;
-        float sx = tx * inv_ty + SW2;
-        float sy = (wz1-ez) * inv_ty + SH2 + focalShear;
-
-        if (!Entity->animated) {
-            tfile tex = texture_list->files[Entity->tid+Entity->a];
-            uint8_t *t_pixels = tex.pixels;
-            R_RENDER_ENTITY(pixels, t_pixels, portalBounds, sx, sy, ty, character.focalLength, tex.width, tex.height);
-        } else {
-            if (Entity->a > 3) {
-                Entity->a = 0;
-            }
-            tfile tex = texture_list->files[Entity->tid+Entity->a];
-
-            uint8_t *t_pixels = tex.pixels;
-            if (tick) {
-                Entity->a ++;
-            }
-            R_RENDER_ENTITY(pixels, t_pixels, portalBounds, sx, sy, ty, character.focalLength, tex.width, tex.height);
-        }
-    }*/
     free(portalQueue);
 }
 
@@ -303,12 +275,6 @@ void R_startDrawSector(Uint8 *pixels, Level *level, sector *Sector, player chara
 }
 
 void R_INIT() {
-    if (ceilingLut) {
-        _aligned_free(ceilingLut);
-    }
-    if (floorLut) {
-        _aligned_free(floorLut);
-    }
     ceilingLut = (int*)_aligned_malloc(sizeof(int)*SW1, 64);
     floorLut = (int*)_aligned_malloc(sizeof(int)*SW1, 64);
 }

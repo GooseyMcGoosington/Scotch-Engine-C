@@ -62,6 +62,8 @@
   "files.associations": {
     "s_helper.h": "c",
     "sdl.h": "c",
-    "time.h": "c"
+    "time.h": "c",
+    "chrono": "c",
+    "regex": "c"
   }
 }

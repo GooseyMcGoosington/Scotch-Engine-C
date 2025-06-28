@@ -22,7 +22,7 @@ void P_CHARACTER_DISPATCH_WEP() {
     switch(character.stats.wep) {
         case 0:
         {   
-            /*switch(WEP_STATE) {
+            switch(WEP_STATE) {
                 case 0:
                 {
                     WEP_STATE = 1;
@@ -38,7 +38,7 @@ void P_CHARACTER_DISPATCH_WEP() {
                         return;
                     }
                 }
-            }*/
+            }
             float ix = 0;
             float iy = 0;
             wall *retWall = NULL;
@@ -48,7 +48,7 @@ void P_CHARACTER_DISPATCH_WEP() {
                 // Raycast was successful
                 printf("Hit wall\n");
                 // Let's create a smoke particle
-                entity *newEntity = S_ADD_ENTITY(level->sectors[0], ix, iy, 10, 0);
+                entity *newEntity = S_ADD_ENTITY(playerSector, ix, iy, 10, 0);
                 newEntity->h = character.z;
 
                 int index = amnt_entities-1;
@@ -84,12 +84,11 @@ void P_CHARACTER_INIT(float x, float y, float yaw, float fov, float radius) {
 }
 
 void P_CHARACTER_RECORD_FRAMETIME() {
-    gettimeofday(&begin, NULL);
     double time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
     time_spent = (end.tv_sec - begin.tv_sec) + (end.tv_usec - begin.tv_usec) / 1000000.0;
     fI++;
     fAvg += time_spent;
-    
+    gettimeofday(&end, NULL);
     if (fI == 15) {
         char str[10];
         fAvg /= fI;

@@ -25,7 +25,7 @@ static inline void S_RESOLVE_COLLISION(player *Character, float lenSq, float dx,
     Character->y += dy * pushDist;
 }
 
-static inline void S_SEGMENT_COLLISION_CHR(sector *Sector, player *Character) {
+static inline int S_SEGMENT_COLLISION_CHR(sector *Sector, player *Character, int doResolve) {
     float hx, hy, dx, dy, lenSq;
     float chrRad = Character->radius * Character->radius;
     float E = Sector->elevation;
@@ -56,7 +56,7 @@ static inline void S_SEGMENT_COLLISION_CHR(sector *Sector, player *Character) {
         dy = Character->y - hy;
         lenSq = dx*dx + dy*dy;
 
-        if (lenSq <= chrRad) {
+        if ((lenSq <= chrRad)) {
             if (Wall.is_portal) {
                 float wallBase = E + Wall.portal_bottom;
                 float wallTop  = EH - Wall.portal_top;
@@ -64,14 +64,21 @@ static inline void S_SEGMENT_COLLISION_CHR(sector *Sector, player *Character) {
                     float wHeight = wallTop - wallBase;
                     float fDiff = E - chrBase;
                     if (!((fDiff < Character->h/2.0f) && (wHeight > Character->h))) {
-                        S_RESOLVE_COLLISION(Character, lenSq, dx, dy);
+                        if (doResolve) {
+                            S_RESOLVE_COLLISION(Character, lenSq, dx, dy);
+                            return 1;
+                        }
                     }
                 }
             } else {
-                S_RESOLVE_COLLISION(Character, lenSq, dx, dy);
+                if (doResolve) {
+                    S_RESOLVE_COLLISION(Character, lenSq, dx, dy);
+                    return 1;
+                }
             }
         }
     }
+    return 0;
 }
 
 static inline void S_LINE_INTERSECT_TEST(segment l1, segment l2, int8_t *intersect, float *ix, float *iy) {

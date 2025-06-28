@@ -3,9 +3,7 @@
 
 #include "classes.h"
 #include "helper.h"
-#include "SDL2/SDL.h"
-
-#include "s_level.c"
+//#include "SDL2/SDL.h"
 
 #include <stdio.h>
 #include <sys/time.h>

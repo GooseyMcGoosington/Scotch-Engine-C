@@ -3,6 +3,7 @@
 
 #include "s_level.c"
 #include "r_render.c"
+#include "s_bsp.c"
 
 #include <math.h>
 #include <stdio.h>
@@ -66,7 +67,7 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* window = SDL_CreateWindow("Software Renderer",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        SW, SH, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN);
+        SW, SH, SDL_WINDOW_SHOWN);
 
     SDL_Surface* screenSurface = SDL_GetWindowSurface(window);
     SDL_Surface* framebuffer = SDL_CreateRGBSurface(0, SW, SH, 8, 0, 0, 0, 0);
@@ -77,6 +78,7 @@ int main(int argc, char* argv[]) {
     SDL_Rect dstRect = { 0, 0, screenSurface->w, screenSurface->h };
     
     S_LEVEL_LOAD();
+    bsp_init();
     while (running) {
         struct timeval begin, end;
         gettimeofday(&begin, NULL);
@@ -88,7 +90,8 @@ int main(int argc, char* argv[]) {
         // Fill framebuffer with a palette index (e.g., 2 = dark red)
         Uint8* pixels = (Uint8*)framebuffer->pixels;
         //fillBuffer(pixels, 2);
-        R_RENDER_SECTORS(level, pixels, 1);
+        //R_RENDER_SECTORS(level, pixels, -1);
+        bsp_traverse_draw(root_node, pixels, 0xcc);
         SDL_BlitScaled(framebuffer, NULL, screenSurface, &dstRect);
         SDL_UpdateWindowSurface(window);
 

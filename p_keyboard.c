@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <math.h>
 
-int control_locked = 1;
+int control_locked = 0;
 int8_t inputs[256];
 
 void P_KEYBOARD_INIT() {
@@ -65,7 +65,7 @@ void P_KEYBOARD_UPDATE() {
                 if (event.key.keysym.sym == SDLK_ESCAPE) {
                     // Escape to Menu
                     control_locked = 1;
-                    G_CURRENT_SCENE = 0;
+                    //G_CURRENT_SCENE = 0;
                 }
             }
         }
@@ -85,7 +85,7 @@ void P_KEYBOARD_UPDATE() {
                 int mX = event.button.x;
                 int mY = event.button.y;
                 if (control_locked) {
-                    G_GUI_MOUSE_CLICK(mX, mY);
+                    //G_GUI_MOUSE_CLICK(mX, mY);
                 } else {
                     P_CHARACTER_DISPATCH_WEP();
                 }

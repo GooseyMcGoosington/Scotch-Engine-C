@@ -10,8 +10,6 @@
 #define DEG2RAD(_d) ((_d) * (PI / 180.0f))
 #define RAD2DEG(_d) ((_d) * (180.0f / PI))
 
-#define RED 0xF800;
-#define GREY 0x8080;
 #define BLACK 0x0000;
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #define max(a,b) (((a) > (b)) ? (a) : (b))
